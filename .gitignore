@@ -1,0 +1,9 @@
+# Sistema/editor
+.DS_Store
+Thumbs.db
+.vscode/
+*.swp
+
+# Backups locais que você possa criar ao editar
+*.bak
+*.old
