@@ -1,7 +1,3 @@
-const SUPABASE_URL = 'https://pcugivsgiudlxhnuvttf.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_iMMKiY9-Rl95kESNDtHtYA_lFm-P1Ax';
-const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
 let products = [];
 let newQtys = {};       // { id: qty }                  -> produtos sem voltagem
 let newQtysVolt = {};   // { id: { v110: x, v220: y } }  -> produtos com voltagem
