@@ -738,7 +738,7 @@ async function confirmBaixa() {
     ? (baixaVoltagemSelecionada === 'v110' ? '110v' : '220v')
     : null;
 
-  const { error } = await sb.rpc('registrar_baixa_venda', {
+  const { data, error } = await sb.rpc('registrar_baixa_venda', {
     p_produto_id: baixaProduto.id,
     p_quantidade: qty,
     p_voltagem: voltLabel
@@ -753,6 +753,28 @@ async function confirmBaixa() {
   }
 
   const nomeProduto = baixaProduto.nome;
+
+
+
+  const produtoAtualizado = Array.isArray(data) ? data[0] : null;
+
+if (produtoAtualizado) {
+  products = products.map(p => p.id === baixaProduto.id ? {
+    ...p,
+    quantidade: produtoAtualizado.quantidade,
+    quantidade_110v: produtoAtualizado.quantidade_110v,
+    quantidade_220v: produtoAtualizado.quantidade_220v,
+    ultima_baixa_vendedor: vendedorAtual.nome,
+    ultima_baixa_em: new Date().toISOString(),
+    ultima_baixa_voltagem: voltLabel
+  } : p);
+
+  renderCards();
+} else {
+  await loadProducts();
+}
+
+
   closeBaixaPanel();
   showToast(`Baixa registrada: ${nomeProduto} -> ${novaQty}${voltLabel ? ' (' + voltLabel.toUpperCase() + ')' : ''}`);
   await loadProducts();
