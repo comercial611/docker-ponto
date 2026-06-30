@@ -9,6 +9,7 @@ Esta pasta documenta a configuração de segurança usada no Supabase de produç
 3. `03-policies-rls.sql`
 4. `04-registrar-baixa-venda.sql`
 5. `05-restringir-update-produtos.sql`
+6. `06-registrar-contagem-estoque.sql`
 
 ## O que foi protegido
 
@@ -26,6 +27,7 @@ Esta pasta documenta a configuração de segurança usada no Supabase de produç
 - `03-policies-rls.sql`: substitui as policies antigas por regras baseadas em perfil.
 - `04-registrar-baixa-venda.sql`: cria a função segura usada pela tela do vendedor.
 - `05-restringir-update-produtos.sql`: remove do vendedor o direito direto de atualizar produtos.
+- `06-registrar-contagem-estoque.sql`: cria a função segura usada pela tela de funcionário para contagem de estoque.
 - `rollback-policies-abertas.sql`: volta para as policies antigas em caso de emergência.
 
 ## Atenção

@@ -283,14 +283,42 @@ async function saveQty(id) {
   const novaQty = newQtys[id];
   const prod = products.find(p => p.id === id);
   if (novaQty === undefined || !prod) return;
+
   const btn = document.getElementById(`btn-${id}`);
-  btn.disabled = true; btn.textContent = '...';
-  await sb.from('produtos').update({ quantidade: novaQty }).eq('id', id);
-  await sb.from('historico').insert({ produto_id: id, quantidade_anterior: prod.quantidade, quantidade_nova: novaQty, usuario: userEmail });
-  prod.quantidade = novaQty;
-  btn.classList.add('saved'); btn.textContent = '✓ Salvo';
-  showToast(`${prod.nome} → ${novaQty}`);
-  setTimeout(() => { btn.disabled = false; btn.classList.remove('saved'); btn.textContent = 'Salvar'; renderCards(); }, 1500);
+  btn.disabled = true;
+  btn.textContent = '...';
+
+  const { data, error } = await sb.rpc('registrar_contagem_estoque', {
+    p_produto_id: id,
+    p_quantidade: novaQty,
+    p_voltagem: null
+  });
+
+  if (error) {
+    btn.disabled = false;
+    btn.textContent = 'Salvar';
+    showToast(error.message || 'Nao foi possivel salvar.');
+    return;
+  }
+
+  const produtoAtualizado = Array.isArray(data) ? data[0] : null;
+  if (produtoAtualizado) {
+    prod.quantidade = produtoAtualizado.quantidade;
+    prod.quantidade_110v = produtoAtualizado.quantidade_110v;
+    prod.quantidade_220v = produtoAtualizado.quantidade_220v;
+  } else {
+    prod.quantidade = novaQty;
+  }
+
+  btn.classList.add('saved');
+  btn.textContent = 'Salvo';
+  showToast(`${prod.nome} -> ${novaQty}`);
+  setTimeout(() => {
+    btn.disabled = false;
+    btn.classList.remove('saved');
+    btn.textContent = 'Salvar';
+    renderCards();
+  }, 1500);
 }
 
 // ─── PRODUTOS COM VOLTAGEM ────────────────────────────────
@@ -309,28 +337,51 @@ function onQtyInputVolt(id, volt, val) {
 async function saveQtyVolt(id, volt) {
   const prod = products.find(p => p.id === id);
   if (!prod) return;
+
   const novaQty = newQtysVolt[id]?.[volt];
   if (novaQty === undefined) return;
 
   const suffix = volt === 'v110' ? '110' : '220';
-  const campo = volt === 'v110' ? 'quantidade_110v' : 'quantidade_220v';
-  const anterior = volt === 'v110' ? prod.quantidade_110v : prod.quantidade_220v;
   const voltLabel = volt === 'v110' ? '110V' : '220V';
+  const rpcVolt = volt === 'v110' ? '110v' : '220v';
 
   const btn = document.getElementById(`btn-${id}-${suffix}`);
-  btn.disabled = true; btn.textContent = '...';
+  btn.disabled = true;
+  btn.textContent = '...';
 
-  await sb.from('produtos').update({ [campo]: novaQty }).eq('id', id);
-  await sb.from('historico').insert({
-    produto_id: id, quantidade_anterior: anterior, quantidade_nova: novaQty,
-    usuario: userEmail, voltagem: voltLabel
+  const { data, error } = await sb.rpc('registrar_contagem_estoque', {
+    p_produto_id: id,
+    p_quantidade: novaQty,
+    p_voltagem: rpcVolt
   });
 
-  if (volt === 'v110') prod.quantidade_110v = novaQty; else prod.quantidade_220v = novaQty;
+  if (error) {
+    btn.disabled = false;
+    btn.textContent = `Salvar ${voltLabel}`;
+    showToast(error.message || 'Nao foi possivel salvar.');
+    return;
+  }
 
-  btn.classList.add('saved'); btn.textContent = `✓ ${voltLabel} salvo`;
-  showToast(`${prod.nome} (${voltLabel}) → ${novaQty}`);
-  setTimeout(() => { btn.disabled = false; btn.classList.remove('saved'); btn.textContent = `Salvar ${voltLabel}`; renderCards(); }, 1500);
+  const produtoAtualizado = Array.isArray(data) ? data[0] : null;
+  if (produtoAtualizado) {
+    prod.quantidade = produtoAtualizado.quantidade;
+    prod.quantidade_110v = produtoAtualizado.quantidade_110v;
+    prod.quantidade_220v = produtoAtualizado.quantidade_220v;
+  } else if (volt === 'v110') {
+    prod.quantidade_110v = novaQty;
+  } else {
+    prod.quantidade_220v = novaQty;
+  }
+
+  btn.classList.add('saved');
+  btn.textContent = `${voltLabel} salvo`;
+  showToast(`${prod.nome} (${voltLabel}) -> ${novaQty}`);
+  setTimeout(() => {
+    btn.disabled = false;
+    btn.classList.remove('saved');
+    btn.textContent = `Salvar ${voltLabel}`;
+    renderCards();
+  }, 1500);
 }
 
 function showToast(msg) {
