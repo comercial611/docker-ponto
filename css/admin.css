@@ -58,10 +58,12 @@
   .notif-dot.yellow { background: var(--yellow); }
   .notif-dot.red { background: var(--red); }
   .notif-dot.blue { background: var(--accent); }
-  .notif-body { flex: 1; }
+  .notif-body { flex: 1; min-width: 0; }
   .notif-text { font-size: 12.5px; line-height: 1.4; }
   .notif-text strong { font-weight: 600; }
   .notif-time { font-size: 10.5px; color: var(--muted); margin-top: 2px; }
+  .notif-delete-btn { width: 24px; height: 24px; border: 1px solid transparent; border-radius: 4px; background: none; color: var(--muted); cursor: pointer; font-size: 16px; line-height: 1; flex-shrink: 0; }
+  .notif-delete-btn:hover { border-color: var(--border); color: var(--red); background: var(--surface2); }
 
   /* TOAST */
   .toast-stack { position: fixed; bottom: 24px; right: 24px; z-index: 300; display: flex; flex-direction: column; gap: 10px; align-items: flex-end; }

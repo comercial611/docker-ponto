@@ -6,4 +6,5 @@ Thumbs.db
 
 # Backups locais que você possa criar ao editar
 *.bak
+*.bak-*
 *.old
