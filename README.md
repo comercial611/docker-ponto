@@ -27,7 +27,7 @@ Sistema interno de controle de estoque em tempo real, com três áreas de acesso
 
 ## Variáveis de ambiente / configuração
 
-As credenciais do Supabase (URL do projeto e chave pública) estão hardcoded no início do `<script>` de cada arquivo HTML, na constante `SUPABASE_URL` e `SUPABASE_KEY`. A chave usada é a **pública** (`sb_publishable_...`), segura para uso no navegador — a chave secreta nunca aparece em nenhum arquivo deste repositório.
+As credenciais públicas do Supabase ficam centralizadas em `js/supabase-config.js`. A chave usada é a pública (`sb_publishable_...`), segura para uso no navegador — a chave secreta nunca aparece em nenhum arquivo deste repositório.
 
 ## Hospedagem
 

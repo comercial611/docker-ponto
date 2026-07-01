@@ -15,7 +15,7 @@ Esta pasta documenta a configuração de segurança usada no Supabase de produç
 
 - Usuários precisam existir em `public.perfis` para acessar dados do sistema.
 - Admin pode criar, editar e excluir produtos.
-- Funcionário pode atualizar produtos para contagem de estoque.
+- Funcionário registra contagens pela função `public.registrar_contagem_estoque`, sem `UPDATE` direto em `produtos`.
 - Vendedor pode ler produtos, mas não atualiza `produtos` diretamente.
 - Baixas de venda passam pela função `public.registrar_baixa_venda`.
 - Histórico de movimentação fica centralizado no Supabase.
@@ -26,7 +26,7 @@ Esta pasta documenta a configuração de segurança usada no Supabase de produç
 - `02-funcoes-permissao.sql`: cria funções auxiliares como `eh_admin()` e `eh_vendedor()`.
 - `03-policies-rls.sql`: substitui as policies antigas por regras baseadas em perfil.
 - `04-registrar-baixa-venda.sql`: cria a função segura usada pela tela do vendedor.
-- `05-restringir-update-produtos.sql`: remove do vendedor o direito direto de atualizar produtos.
+- `05-restringir-update-produtos.sql`: restringe `UPDATE` direto em `produtos` ao admin; funcionário e vendedor usam funções seguras.
 - `06-registrar-contagem-estoque.sql`: cria a função segura usada pela tela de funcionário para contagem de estoque.
 - `rollback-policies-abertas.sql`: volta para as policies antigas em caso de emergência.
 

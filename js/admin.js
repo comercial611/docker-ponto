@@ -10,6 +10,7 @@ let baixaVoltagemSelecionada = null; // 'v110' | 'v220' | null
 // ─── NOTIFICAÇÕES ────────────────────────────────────────
 let notifications = [];
 let productsSnapshot = {}; // { id: { quantidade, quantidade_110v, quantidade_220v, minimo, tem_voltagem } }
+const NOTIFICATIONS_STORAGE_KEY = 'admin-notifications';
 
 function snapshotProducts(list) {
   const snap = {};
@@ -31,10 +32,29 @@ function statusFromQty(qty, minimo) {
   return 'ok';
 }
 
-function pushNotification(color, text) {
-  const notif = { id: Date.now() + Math.random(), color, text, time: new Date() };
+function loadSavedNotifications() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(NOTIFICATIONS_STORAGE_KEY) || '[]');
+    notifications = saved
+      .map(n => ({ ...n, time: new Date(n.time) }))
+      .filter(n => n.id && n.text && !Number.isNaN(n.time.getTime()));
+  } catch {
+    notifications = [];
+  }
+  renderNotifDropdown();
+}
+
+function saveNotifications() {
+  localStorage.setItem(NOTIFICATIONS_STORAGE_KEY, JSON.stringify(notifications.slice(0, 50)));
+}
+
+function pushNotification(color, text, sourceId) {
+  if (sourceId && notifications.some(n => n.sourceId === sourceId)) return;
+
+  const notif = { id: Date.now() + Math.random(), sourceId, color, text, time: new Date() };
   notifications.unshift(notif);
   if (notifications.length > 50) notifications.pop();
+  saveNotifications();
   renderNotifDropdown();
   showToast(color, text);
 }
@@ -45,7 +65,11 @@ function renderNotifDropdown() {
   countEl.classList.toggle('visible', notifications.length > 0);
 
   const listEl = document.getElementById('notif-list');
-  if (!notifications.length) { listEl.innerHTML = '<div class="empty-state">Nenhuma notificação ainda.</div>'; return; }
+  if (!notifications.length) {
+    listEl.innerHTML = '<div class="empty-state">Nenhuma notificação ainda.</div>';
+    return;
+  }
+
   listEl.innerHTML = notifications.map(n => `
     <div class="notif-item">
       <div class="notif-dot ${n.color}"></div>
@@ -53,16 +77,26 @@ function renderNotifDropdown() {
         <div class="notif-text">${n.text}</div>
         <div class="notif-time">${n.time.toLocaleString('pt-BR')}</div>
       </div>
+      <button class="notif-delete-btn" onclick="event.stopPropagation(); deleteNotification(${JSON.stringify(n.id)})" title="Apagar notificação">x</button>
     </div>`).join('');
 }
 
 function toggleNotifDropdown() {
   document.getElementById('notif-dropdown').classList.toggle('open');
 }
+
 function clearNotifications() {
   notifications = [];
+  saveNotifications();
   renderNotifDropdown();
 }
+
+function deleteNotification(id) {
+  notifications = notifications.filter(n => n.id !== id);
+  saveNotifications();
+  renderNotifDropdown();
+}
+
 document.addEventListener('click', (e) => {
   const wrap = document.querySelector('.notif-bell-wrap');
   if (wrap && !wrap.contains(e.target)) document.getElementById('notif-dropdown').classList.remove('open');
@@ -83,17 +117,8 @@ function showToast(color, text) {
 
 // Compara o snapshot anterior com a lista nova e gera notificações de mudança de estoque
 function detectStockChanges(newList) {
-  newList.forEach(p => {
-    const prev = productsSnapshot[p.id];
-    if (!prev) return; // produto novo, sem comparação a fazer
-
-    if (p.tem_voltagem) {
-      checkVoltDelta(p, prev, 'quantidade_110v', '110V');
-      checkVoltDelta(p, prev, 'quantidade_220v', '220V');
-    } else {
-      checkSimpleDelta(p, prev);
-    }
-  });
+  // As notificações de alterações agora vêm do historico.
+  // Aqui mantemos apenas o snapshot atualizado para evitar notificações duplicadas.
   productsSnapshot = snapshotProducts(newList);
 }
 
@@ -134,6 +159,27 @@ function checkVoltDelta(p, prev, field, voltLabel) {
 }
 
 // ─── AUTH ────────────────────────────────────────────────
+function pushHistoryNotification(record) {
+  if (!record) return;
+
+  const product = products.find(p => p.id === record.produto_id);
+  const productName = product?.nome || 'Produto';
+  const before = record.quantidade_anterior;
+  const after = record.quantidade_nova;
+  const volt = record.voltagem ? ` (${record.voltagem})` : '';
+  const sourceId = `historico-${record.id}`;
+
+  if (record.tipo === 'baixa') {
+    const vendedor = record.vendedor || record.usuario || 'vendedor';
+    pushNotification('blue', `<strong>${productName}</strong>${volt}: baixa de ${before} para ${after} por ${vendedor}`, sourceId);
+    return;
+  }
+
+  const usuario = record.usuario || 'funcionário';
+  const color = after >= before ? 'green' : 'yellow';
+  pushNotification(color, `<strong>${productName}</strong>${volt}: contagem de ${before} para ${after} por ${usuario}`, sourceId);
+}
+
 async function checkSession() {
   const { data: { session } } = await sb.auth.getSession();
   if (session) { showApp(); init(); }
@@ -159,6 +205,7 @@ function showApp() {
 }
 
 async function init() {
+  loadSavedNotifications();
   await loadProducts();
   await loadVendedores();
   await loadHistory();
@@ -635,8 +682,15 @@ async function confirmBaixa() {
     updateBody.ultima_baixa_voltagem = null;
   }
 
-  await sb.from('produtos').update(updateBody).eq('id', baixaProduto.id);
-  await sb.from('historico').insert({
+  const { error: updateError } = await sb.from('produtos').update(updateBody).eq('id', baixaProduto.id);
+  if (updateError) {
+    btn.disabled = false;
+    btn.textContent = 'Confirmar baixa';
+    errorEl.textContent = updateError.message || 'Não foi possível atualizar o produto.';
+    return;
+  }
+
+  const { data: historicoData, error: historicoError } = await sb.from('historico').insert({
     produto_id: baixaProduto.id,
     quantidade_anterior: atual,
     quantidade_nova: novaQty,
@@ -644,10 +698,16 @@ async function confirmBaixa() {
     vendedor: vendedor,
     voltagem: voltLabel,
     tipo: 'baixa'
-  });
+  }).select('id, produto_id, quantidade_anterior, quantidade_nova, usuario, voltagem, tipo, vendedor').single();
 
-  const voltSuffix = voltLabel ? ` (${voltLabel})` : '';
-  pushNotification('blue', `Baixa de ${qty} em <strong>${baixaProduto.nome}</strong>${voltSuffix} — vendido por ${vendedor}`);
+  if (historicoError) {
+    btn.disabled = false;
+    btn.textContent = 'Confirmar baixa';
+    errorEl.textContent = historicoError.message || 'Produto atualizado, mas não foi possível registrar o histórico.';
+    return;
+  }
+
+  if (historicoData) pushHistoryNotification(historicoData);
 
   btn.disabled = false; btn.textContent = 'Confirmar baixa';
   closeBaixaPanel();
@@ -703,7 +763,10 @@ function subscribeRealtime() {
         if (row) { row.classList.remove('new-flash'); void row.offsetWidth; row.classList.add('new-flash'); }
       }
     })
-    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'historico' }, async () => { await loadHistory(); })
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'historico' }, async (payload) => {
+      await loadHistory();
+      pushHistoryNotification(payload.new);
+    })
     .on('postgres_changes', { event: '*', schema: 'public', table: 'vendedores' }, async () => { await loadVendedores(); })
     .subscribe();
 }
