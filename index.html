@@ -9,10 +9,9 @@
   :root {
     --bg: #0f1117; --surface: #1a1d27; --surface2: #22263a; --border: #2e3248;
     --accent: #4f6ef7; --accent-dark: #3a57d4; --accent-soft: #25304f;
-    --green: #22c55e; --teal: #14b8a6; --yellow: #f59e0b; --text: #e8eaf6; --muted: #7b82a8;
+    --green: #22c55e; --yellow: #f59e0b; --text: #e8eaf6; --muted: #7b82a8;
     --font: 'Inter', system-ui, sans-serif;
   }
-
   body {
     background: var(--bg); color: var(--text); font-family: var(--font);
     min-height: 100vh; display: flex; flex-direction: column; align-items: center;
@@ -25,8 +24,8 @@
   .page-sub { color: var(--muted); font-size: 14px; }
 
   .cards-grid {
-    display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px;
-    max-width: 1180px; width: 100%;
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px;
+    max-width: 920px; width: 100%;
   }
 
   .access-card {
@@ -36,7 +35,6 @@
     transition: border-color .2s, transform .2s, box-shadow .2s;
     cursor: pointer;
   }
-
   .access-card:hover {
     border-color: var(--accent); transform: translateY(-3px);
     box-shadow: 0 12px 30px rgba(79,110,247,.15);
@@ -44,27 +42,20 @@
 
   .access-icon {
     width: 64px; height: 64px; border-radius: 16px; display: flex; align-items: center;
-    justify-content: center; font-size: 28px; flex-shrink: 0; font-weight: 800;
+    justify-content: center; font-size: 28px; flex-shrink: 0;
   }
-
   .access-icon.admin { background: rgba(79,110,247,.12); }
   .access-icon.estoque { background: rgba(34,197,94,.12); }
-  .access-icon.app { background: rgba(20,184,166,.12); }
   .access-icon.vendedor { background: rgba(245,158,11,.12); }
 
   .access-title { font-size: 17px; font-weight: 700; }
   .access-desc { font-size: 12.5px; color: var(--muted); line-height: 1.5; }
+
   .access-arrow { font-size: 13px; color: var(--accent); font-weight: 600; margin-top: 4px; }
 
   .page-footer { margin-top: 48px; font-size: 11.5px; color: var(--muted); text-align: center; }
 
-  @media (max-width: 980px) {
-    .cards-grid { grid-template-columns: repeat(2, 1fr); max-width: 720px; }
-  }
-
   @media (max-width: 760px) {
-    body { justify-content: flex-start; }
-    .page-header { margin-top: 28px; margin-bottom: 28px; }
     .cards-grid { grid-template-columns: 1fr; max-width: 360px; }
     .page-title { font-size: 22px; }
   }
@@ -80,28 +71,21 @@
 
   <div class="cards-grid">
     <a class="access-card" href="admin.html">
-      <div class="access-icon admin">ADM</div>
+      <div class="access-icon admin">🛠️</div>
       <div class="access-title">Administração</div>
       <div class="access-desc">Cadastro de produtos, dashboard, histórico e gestão de vendedores</div>
       <div class="access-arrow">Entrar →</div>
     </a>
 
     <a class="access-card" href="funcionario.html">
-      <div class="access-icon estoque">EST</div>
+      <div class="access-icon estoque">📦</div>
       <div class="access-title">Estoque</div>
       <div class="access-desc">Atualização de contagem de produtos pelo time do estoque</div>
       <div class="access-arrow">Entrar →</div>
     </a>
 
-    <a class="access-card" href="funcionario-app.html">
-      <div class="access-icon app">APP</div>
-      <div class="access-title">App Estoque</div>
-      <div class="access-desc">Contagem rápida em layout mobile com foto, observações e histórico</div>
-      <div class="access-arrow">Entrar →</div>
-    </a>
-
     <a class="access-card" href="vendedor.html">
-      <div class="access-icon vendedor">VEN</div>
+      <div class="access-icon vendedor">🧾</div>
       <div class="access-title">Vendedor</div>
       <div class="access-desc">Consulta de estoque e registro de baixas por venda</div>
       <div class="access-arrow">Entrar →</div>
