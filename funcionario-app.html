@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>App Funcionário - Estoque</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link rel="stylesheet" href="css/funcionario-app.css">
+</head>
+<body>
+
+<div id="login-screen">
+  <div class="login-box">
+    <div class="login-logo">Ponto da Sublimação</div>
+    <div class="login-title">App do Estoque</div>
+    <div class="login-sub">Contagem rápida de produtos</div>
+    <div class="field"><label>E-mail</label><input type="email" id="login-email" autocomplete="email"></div>
+    <div class="field"><label>Senha</label><input type="password" id="login-pass"></div>
+    <button class="btn-primary" onclick="doLogin()">Entrar</button>
+    <div class="error-msg" id="login-error"></div>
+  </div>
+</div>
+
+<div id="app-screen">
+  <header class="app-header">
+    <div>
+      <div class="header-kicker">Estoque</div>
+      <div class="header-title">Contagem rápida</div>
+      <div class="header-user" id="user-email"></div>
+    </div>
+    <button class="icon-btn" onclick="doLogout()" title="Sair">Sair</button>
+  </header>
+
+  <section class="search-panel">
+    <input class="search-input" id="search-input" placeholder="Buscar produto, código ou referência" oninput="renderProducts()">
+    <div class="filter-row">
+      <button class="filter-chip active" data-filter="" onclick="setStatusFilter('')">Todos</button>
+      <button class="filter-chip" data-filter="low" onclick="setStatusFilter('low')">Baixo</button>
+      <button class="filter-chip" data-filter="out" onclick="setStatusFilter('out')">Zerado</button>
+    </div>
+  </section>
+
+  <main class="products-list" id="products-list">
+    <div class="empty-state">Carregando produtos...</div>
+  </main>
+</div>
+
+<div class="sheet-overlay" id="product-overlay" onclick="closeProductSheet()"></div>
+<aside class="product-sheet" id="product-sheet">
+  <div class="sheet-handle"></div>
+  <div class="sheet-content" id="sheet-content"></div>
+</aside>
+
+<div class="toast" id="toast"></div>
+
+<script src="js/supabase-config.js"></script>
+<script src="js/funcionario-app.js"></script>
+</body>
+</html>
