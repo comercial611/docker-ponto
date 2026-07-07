@@ -337,7 +337,11 @@ button, input, textarea {
 .save-btn { margin-top: 8px; }
 .save-btn.saved { background: var(--green); }
 
-.notes-box { width: 100%; min-height: 86px; resize: vertical; border: 1px solid var(--border); border-radius: 12px; padding: 12px; background: var(--surface2); color: var(--text); }
+.notes-panel { border: 1px solid var(--border); border-radius: 14px; background: var(--surface2); padding: 12px; }
+.notes-box { width: 100%; min-height: 96px; resize: vertical; border: 1px solid var(--border); border-radius: 12px; padding: 12px; background: var(--surface); color: var(--text); }
+.notes-save-btn { width: 100%; min-height: 44px; margin-top: 10px; border: none; border-radius: 10px; background: var(--accent2); color: #fff; font-weight: 850; cursor: pointer; }
+.notes-save-btn:disabled { opacity: .65; cursor: wait; }
+.notes-save-btn.saved { background: var(--green); }
 
 .history-list { display: flex; flex-direction: column; gap: 8px; }
 .history-item { display: grid; grid-template-columns: 1fr auto; gap: 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface2); padding: 10px; }
