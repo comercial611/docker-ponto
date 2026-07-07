@@ -1,5 +1,7 @@
 let products = [];
 let vendedorAtual = null; // registro da tabela `vendedores` ligado ao login atual
+let minhasBaixas = [];
+let sellerHistoryOpen = false;
 
 // Estado do painel de baixa
 let baixaProduto = null;
@@ -12,7 +14,7 @@ async function checkSession() {
     await loadVendedorAtual(session.user.id);
     if (vendedorAtual) {
       showApp();
-      await loadProducts();
+      await Promise.all([loadProducts(), loadMinhasBaixas()]);
     } else {
       await sb.auth.signOut();
     }
@@ -58,7 +60,7 @@ async function doLogin() {
 
   document.getElementById('user-name').textContent = vendedorAtual.nome;
   showApp();
-  await loadProducts();
+  await Promise.all([loadProducts(), loadMinhasBaixas()]);
 }
 
 async function doLogout() { await sb.auth.signOut(); }
@@ -69,6 +71,11 @@ function showApp() {
   const nome = vendedorAtual?.nome || '';
   document.getElementById('user-name').textContent = nome;
   document.getElementById('user-avatar').textContent = nome ? nome.trim()[0].toUpperCase() : 'V';
+  const mobileName = document.getElementById('mobile-user-name');
+  const mobileAvatar = document.getElementById('mobile-user-avatar');
+  if (mobileName) mobileName.textContent = nome || 'Vendedor';
+  if (mobileAvatar) mobileAvatar.textContent = nome ? nome.trim()[0].toUpperCase() : 'V';
+  setSellerHistoryOpen(false);
 
   // Aplica o modo de visualização padrão (lista) na UI do toggle
   document.getElementById('view-grid-btn').classList.toggle('active', viewMode === 'grid');
@@ -127,6 +134,97 @@ async function loadProducts() {
   renderCards();
 }
 
+
+function setSellerHistoryOpen(open) {
+  sellerHistoryOpen = !!open;
+  const historyEl = document.getElementById('seller-history');
+  const toggleEl = document.getElementById('seller-history-toggle');
+  if (historyEl) historyEl.classList.toggle('is-collapsed', !sellerHistoryOpen);
+  if (toggleEl) toggleEl.textContent = sellerHistoryOpen ? 'Fechar' : 'Abrir';
+}
+
+function toggleSellerHistory() {
+  setSellerHistoryOpen(!sellerHistoryOpen);
+}
+async function loadMinhasBaixas() {
+  const listEl = document.getElementById('seller-history-list');
+  const subEl = document.getElementById('seller-history-sub');
+  const refreshBtn = document.querySelector('.seller-history-refresh');
+  if (!listEl) return;
+
+  if (refreshBtn) {
+    refreshBtn.disabled = true;
+    refreshBtn.textContent = 'Carregando...';
+  }
+  if (subEl) subEl.textContent = 'Atualizando suas baixas recentes';
+  listEl.innerHTML = '<div class="history-loading"><span class="history-spinner"></span><span>Carregando historico...</span></div>';
+
+  const { data, error } = await sb.rpc('listar_minhas_baixas_vendedor', { p_limite: 30 });
+
+  if (refreshBtn) {
+    refreshBtn.disabled = false;
+    refreshBtn.textContent = 'Atualizar';
+  }
+
+  if (error) {
+    listEl.innerHTML = '<div class="history-empty">Nao foi possivel carregar suas baixas.</div>';
+    if (subEl) subEl.textContent = 'Tente atualizar novamente em alguns instantes';
+    return;
+  }
+
+  minhasBaixas = data || [];
+  renderMinhasBaixas();
+}
+
+function renderMinhasBaixas() {
+  const listEl = document.getElementById('seller-history-list');
+  const subEl = document.getElementById('seller-history-sub');
+  if (!listEl) return;
+
+  if (subEl) {
+    subEl.textContent = minhasBaixas.length
+      ? `${minhasBaixas.length} baixa${minhasBaixas.length === 1 ? '' : 's'} recente${minhasBaixas.length === 1 ? '' : 's'}`
+      : 'Nenhuma baixa registrada por voce ainda';
+  }
+
+  if (!minhasBaixas.length) {
+    listEl.innerHTML = '<div class="history-empty">Nenhuma baixa registrada por voce ainda.</div>';
+    return;
+  }
+
+  listEl.innerHTML = minhasBaixas.map(item => {
+    const quantidade = Number(item.quantidade_movimentada || 0);
+    const voltagem = item.voltagem ? ` · ${escapeHtml(String(item.voltagem).toUpperCase())}` : '';
+    const data = formatDateTimeBR(item.created_at);
+    return `<div class="history-item">
+      <div>
+        <div class="history-product">${escapeHtml(item.produto_nome || 'Produto')}</div>
+        <div class="history-meta">${data}${voltagem} · ${item.quantidade_anterior} -> ${item.quantidade_nova}</div>
+      </div>
+      <div class="history-qty"><strong>-${quantidade}</strong>baixado</div>
+    </div>`;
+  }).join('');
+}
+
+function formatDateTimeBR(value) {
+  if (!value) return '';
+  return new Intl.DateTimeFormat('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  }).format(new Date(value));
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
+}
 function totalQty(p) { return p.tem_voltagem ? (p.quantidade_110v + p.quantidade_220v) : p.quantidade; }
 
 function getStatus(p) {
@@ -398,6 +496,7 @@ if (produtoAtualizado) {
   closeBaixaPanel();
   showToast(`Baixa registrada: ${nomeProduto} -> ${novaQty}${voltLabel ? ' (' + voltLabel.toUpperCase() + ')' : ''}`);
   await loadProducts();
+  await loadMinhasBaixas();
 }
 
 function showToast(msg) {

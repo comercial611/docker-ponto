@@ -76,8 +76,13 @@
     <div class="main-area">
       <div class="main-topbar">
         <div>
-          <div class="main-topbar-title">Estoque</div>
-          <div class="main-topbar-count" id="topbar-count"></div>
+          <div class="main-topbar-user">
+            <div class="main-topbar-avatar" id="mobile-user-avatar">V</div>
+            <div>
+              <div class="main-topbar-title" id="mobile-user-name">Vendedor</div>
+              <div class="main-topbar-count" id="topbar-count"></div>
+            </div>
+          </div>
         </div>
         <div style="display:flex;gap:8px;align-items:center;">
           <button class="main-topbar-theme" onclick="toggleTheme()" id="theme-icon-mobile">🌙</button>
@@ -96,6 +101,22 @@
           </button>
         </div>
       </div>
+
+      <section class="seller-history is-collapsed" id="seller-history">
+        <div class="seller-history-header">
+          <div>
+            <div class="seller-history-title">Minhas baixas recentes</div>
+            <div class="seller-history-sub" id="seller-history-sub">Ultimas movimentacoes registradas por voce</div>
+          </div>
+          <div class="seller-history-actions">
+            <button class="seller-history-refresh" onclick="loadMinhasBaixas()">Atualizar</button>
+            <button class="seller-history-toggle" id="seller-history-toggle" onclick="toggleSellerHistory()">Abrir</button>
+          </div>
+        </div>
+        <div class="seller-history-list" id="seller-history-list">
+          <div class="history-empty">Carregando historico...</div>
+        </div>
+      </section>
 
       <div class="products-grid" id="products-list">
         <div class="empty-state">Carregando produtos...</div>

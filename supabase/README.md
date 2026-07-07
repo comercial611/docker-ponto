@@ -10,6 +10,7 @@ Esta pasta documenta a configuração de segurança usada no Supabase de produç
 4. `04-registrar-baixa-venda.sql`
 5. `05-restringir-update-produtos.sql`
 6. `06-registrar-contagem-estoque.sql`
+7. `07-listar-minhas-baixas-vendedor.sql`
 
 ## O que foi protegido
 
@@ -28,6 +29,7 @@ Esta pasta documenta a configuração de segurança usada no Supabase de produç
 - `04-registrar-baixa-venda.sql`: cria a função segura usada pela tela do vendedor.
 - `05-restringir-update-produtos.sql`: restringe `UPDATE` direto em `produtos` ao admin; funcionário e vendedor usam funções seguras.
 - `06-registrar-contagem-estoque.sql`: cria a função segura usada pela tela de funcionário para contagem de estoque.
+- `07-listar-minhas-baixas-vendedor.sql`: cria a função segura usada pela tela do vendedor para consultar apenas as próprias baixas.
 - `rollback-policies-abertas.sql`: volta para as policies antigas em caso de emergência.
 
 ## Atenção
