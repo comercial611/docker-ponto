@@ -208,7 +208,10 @@ function renderProductSheet() {
     ${renderCountControls(selectedProduct)}
 
     <div class="section-label">Observações</div>
-    <textarea class="notes-box" readonly>${escapeHtml(observations || 'Sem observações cadastradas.')}</textarea>
+    <div class="notes-panel">
+      <textarea class="notes-box" id="product-notes" placeholder="Digite uma observação sobre este produto">${escapeHtml(observations)}</textarea>
+      <button class="notes-save-btn" id="save-notes-btn" onclick="saveProductNotes(${selectedProduct.id})">Salvar observação</button>
+    </div>
 
     <div class="section-label">Últimas alterações deste produto</div>
     <div class="history-list" id="product-history">
@@ -323,6 +326,46 @@ async function saveCount(productId, volt) {
   }, 900);
 }
 
+async function saveProductNotes(productId) {
+  const product = products.find(item => item.id === productId);
+  const input = document.getElementById('product-notes');
+  const btn = document.getElementById('save-notes-btn');
+
+  if (!product || !input || !btn) return;
+
+  btn.disabled = true;
+  btn.textContent = 'Salvando...';
+
+  const { data, error } = await sb.rpc('atualizar_observacao_produto', {
+    p_produto_id: productId,
+    p_observacoes: input.value
+  });
+
+  if (error) {
+    btn.disabled = false;
+    btn.textContent = 'Salvar observação';
+    showToast(error.message || 'Não foi possível salvar a observação.');
+    return;
+  }
+
+  const updated = Array.isArray(data) ? data[0] : null;
+  product.observacoes = updated ? updated.observacoes : input.value.trim();
+  selectedProduct = product;
+
+  btn.classList.add('saved');
+  btn.textContent = 'Observação salva';
+  showToast('Observação salva.');
+  renderProducts();
+
+  setTimeout(() => {
+    const newBtn = document.getElementById('save-notes-btn');
+    if (newBtn) {
+      newBtn.disabled = false;
+      newBtn.classList.remove('saved');
+      newBtn.textContent = 'Salvar observação';
+    }
+  }, 900);
+}
 async function loadProductHistory(productId) {
   const historyEl = document.getElementById('product-history');
 
