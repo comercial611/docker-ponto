@@ -12,6 +12,7 @@ Esta pasta documenta a configuração de segurança usada no Supabase de produç
 6. `06-registrar-contagem-estoque.sql`
 7. `07-listar-minhas-baixas-vendedor.sql`
 8. `08-atualizar-observacao-produto.sql`
+9. `09-categoria-produtos.sql`
 
 ## O que foi protegido
 
@@ -32,6 +33,7 @@ Esta pasta documenta a configuração de segurança usada no Supabase de produç
 - `06-registrar-contagem-estoque.sql`: cria a função segura usada pela tela de funcionário para contagem de estoque.
 - `07-listar-minhas-baixas-vendedor.sql`: cria a função segura usada pela tela do vendedor para consultar apenas as próprias baixas.
 - `08-atualizar-observacao-produto.sql`: cria a função segura usada pelo app funcionário para editar observações do produto.
+- `09-categoria-produtos.sql`: adiciona a categoria `maquina`/`produto` em produtos, mantendo os itens atuais como máquinas.
 - `rollback-policies-abertas.sql`: volta para as policies antigas em caso de emergência.
 
 ## Atenção

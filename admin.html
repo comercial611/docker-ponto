@@ -92,10 +92,12 @@
 
       <div class="form-section-label">Identificação</div>
       <div class="form-field"><label>Nome do produto *</label><input type="text" id="p-nome" placeholder="Ex: Prensa de Caneca"></div>
+      <div class="form-field"><label>Categoria</label><select id="p-categoria"><option value="maquina">Máquina / Prensa</option><option value="produto">Produto</option></select></div>
       <div class="codes-grid">
         <div class="form-field"><label>Código do Fabricante</label><input type="text" id="p-cod-fab" placeholder="FAB-1234"></div>
         <div class="form-field"><label>Código interno</label><input type="text" id="p-cod-interno" placeholder="0042"></div>
         <div class="form-field"><label>Código de referência</label><input type="text" id="p-cod-ref" placeholder="REF-7891"></div>
+        <div class="form-field"><label>Código de barras</label><input type="text" id="p-cod-barras" placeholder="7890000000000"></div>
       </div>
 
       <div class="form-section-label">Estoque</div>
@@ -154,11 +156,12 @@
     <div style="margin-top:28px;">
       <div class="section-header">
         <div class="section-title">Produtos cadastrados</div>
+        <select class="filter-select" id="filter-prod-categoria" onchange="renderProdTable()"><option value="">Todas as categorias</option><option value="maquina">Máquinas / Prensas</option><option value="produto">Produtos</option></select>
         <input class="search-input" id="search-prod" placeholder="Buscar produto..." oninput="renderProdTable()">
       </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Foto</th><th>Produto</th><th>Códigos</th><th>Qtd.</th><th>Mín.</th><th>Ações</th></tr></thead>
+          <thead><tr><th>Foto</th><th>Produto</th><th>Categoria</th><th>Códigos</th><th>Qtd.</th><th>Mín.</th><th>Ações</th></tr></thead>
           <tbody id="prod-tbody"></tbody>
         </table>
       </div>

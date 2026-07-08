@@ -238,11 +238,17 @@ function thumbHTML(p, size) {
   return `<div class="prod-thumb-placeholder" style="width:${size}px;height:${size}px">📦</div>`;
 }
 
+function categoryHTML(p) {
+  const category = p.categoria || 'maquina';
+  const label = category === 'produto' ? 'Produto' : 'Máquina';
+  return `<span class="category-badge ${category}">${label}</span>`;
+}
 function codesHTML(p) {
   const tags = [];
   if (p.codigo_fabricante) tags.push(`Fab: ${p.codigo_fabricante}`);
   if (p.codigo_interno) tags.push(`Int: ${p.codigo_interno}`);
   if (p.codigo_referencia) tags.push(`Ref: ${p.codigo_referencia}`);
+  if (p.sku) tags.push(`Barras: ${p.sku}`);
   if (!tags.length) return '<span style="color:var(--muted)">—</span>';
   return `<div class="code-tags">${tags.map(t => `<span class="code-tag">${t}</span>`).join('')}</div>`;
 }
@@ -284,7 +290,8 @@ function renderDashTable() {
       p.nome.toLowerCase().includes(q) ||
       (p.codigo_fabricante||'').toLowerCase().includes(q) ||
       (p.codigo_interno||'').toLowerCase().includes(q) ||
-      (p.codigo_referencia||'').toLowerCase().includes(q);
+      (p.codigo_referencia||'').toLowerCase().includes(q) ||
+      (p.sku||'').toLowerCase().includes(q);
     const matchesStatus = !statusFilter || getStatus(p).cls === statusFilter;
     const matchesVendedor = !vendedorFilter || p.ultima_baixa_vendedor === vendedorFilter;
     return matchesSearch && matchesStatus && matchesVendedor;
@@ -309,17 +316,23 @@ function renderDashTable() {
 
 function renderProdTable() {
   const q = (document.getElementById('search-prod')?.value || '').toLowerCase();
-  const filtered = products.filter(p =>
-    p.nome.toLowerCase().includes(q) ||
-    (p.codigo_fabricante||'').toLowerCase().includes(q) ||
-    (p.codigo_interno||'').toLowerCase().includes(q) ||
-    (p.codigo_referencia||'').toLowerCase().includes(q)
-  );
+  const categoryFilter = document.getElementById('filter-prod-categoria')?.value || '';
+  const filtered = products.filter(p => {
+    const matchesSearch =
+      p.nome.toLowerCase().includes(q) ||
+      (p.codigo_fabricante||'').toLowerCase().includes(q) ||
+      (p.codigo_interno||'').toLowerCase().includes(q) ||
+      (p.codigo_referencia||'').toLowerCase().includes(q) ||
+      (p.sku||'').toLowerCase().includes(q);
+    const matchesCategory = !categoryFilter || (p.categoria || 'maquina') === categoryFilter;
+    return matchesSearch && matchesCategory;
+  });
   const tbody = document.getElementById('prod-tbody');
-  if (!filtered.length) { tbody.innerHTML = '<tr><td colspan="6" class="empty-state">Nenhum produto encontrado.</td></tr>'; return; }
+  if (!filtered.length) { tbody.innerHTML = '<tr><td colspan="7" class="empty-state">Nenhum produto encontrado.</td></tr>'; return; }
   tbody.innerHTML = filtered.map(p => `<tr>
     <td>${thumbHTML(p)}</td>
     <td><strong>${p.nome}</strong></td>
+    <td>${categoryHTML(p)}</td>
     <td>${codesHTML(p)}</td>
     <td>${qtyCellHTML(p)}</td>
     <td>${p.minimo || 0}</td>
@@ -330,7 +343,6 @@ function renderProdTable() {
     </div></td>
   </tr>`).join('');
 }
-
 function updateStats() {
   document.getElementById('stat-total').textContent = products.length;
   document.getElementById('stat-ok').textContent = products.filter(p => getStatus(p).cls === 'ok').length;
@@ -359,9 +371,11 @@ async function saveProduct() {
 
   const body = {
     nome,
+    categoria: document.getElementById('p-categoria').value || 'maquina',
     codigo_fabricante: document.getElementById('p-cod-fab').value.trim() || null,
     codigo_interno: document.getElementById('p-cod-interno').value.trim() || null,
     codigo_referencia: document.getElementById('p-cod-ref').value.trim() || null,
+    sku: document.getElementById('p-cod-barras').value.trim() || null,
     tem_voltagem: temVoltagem,
     observacoes: document.getElementById('p-obs').value.trim() || null,
     imagem_url: document.getElementById('p-img-url').value.trim() || null
@@ -391,9 +405,11 @@ function editProduct(id) {
   const p = products.find(x => x.id === id);
   if (!p) return;
   document.getElementById('p-nome').value = p.nome;
+  document.getElementById('p-categoria').value = p.categoria || 'maquina';
   document.getElementById('p-cod-fab').value = p.codigo_fabricante || '';
   document.getElementById('p-cod-interno').value = p.codigo_interno || '';
   document.getElementById('p-cod-ref').value = p.codigo_referencia || '';
+  document.getElementById('p-cod-barras').value = p.sku || '';
   document.getElementById('p-obs').value = p.observacoes || '';
   document.getElementById('p-img-url').value = p.imagem_url || '';
 
@@ -420,7 +436,8 @@ function editProduct(id) {
 
 function cancelEdit() { clearForm(); }
 function clearForm() {
-  ['p-nome','p-cod-fab','p-cod-interno','p-cod-ref','p-qty','p-min','p-qty-110','p-qty-220','p-min-volt','p-obs','p-img-url','p-edit-id'].forEach(id => document.getElementById(id).value = '');
+  ['p-nome','p-cod-fab','p-cod-interno','p-cod-ref','p-cod-barras','p-qty','p-min','p-qty-110','p-qty-220','p-min-volt','p-obs','p-img-url','p-edit-id'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('p-categoria').value = 'maquina';
   const cb = document.getElementById('p-tem-voltagem');
   cb.checked = false;
   toggleVoltagem({ target: cb });
