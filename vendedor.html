@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Vendedor - Estoque</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<link rel="stylesheet" href="css/vendedor.css?v=20260710-separa-produtos">
+<link rel="stylesheet" href="css/vendedor.css?v=20260710-senha-produto">
 
 </head>
 <body>
@@ -139,7 +139,7 @@
 <div class="side-overlay" id="baixa-overlay" onclick="closeBaixaPanel()"></div>
 <div class="side-panel" id="baixa-panel">
   <div class="side-panel-header">
-    <div class="side-panel-title">Dar baixa no estoque</div>
+    <div class="side-panel-title" id="baixa-panel-title">Dar baixa no estoque</div>
     <button class="side-panel-close" onclick="closeBaixaPanel()">&times;</button>
   </div>
 
@@ -160,6 +160,12 @@
     <div class="value" id="baixa-preview-value">—</div>
   </div>
 
+  <div class="field" id="baixa-product-password-wrap" style="display:none">
+    <label>Senha de autorizacao</label>
+    <input type="password" id="baixa-product-password" placeholder="Senha para baixa manual de produto" autocomplete="off">
+    <div class="field-hint">Produtos devem ser baixados por CSV. Use esta senha apenas em excecoes.</div>
+  </div>
+
   <button class="btn-confirm-baixa" id="btn-confirm-baixa" onclick="confirmBaixa()">Confirmar baixa</button>
   <div class="baixa-error" id="baixa-error"></div>
 </div>
@@ -167,6 +173,6 @@
 <div class="toast" id="toast"></div>
 
 <script src="js/supabase-config.js"></script>
-<script src="js/vendedor.js?v=20260710-separa-produtos"></script>
+<script src="js/vendedor.js?v=20260710-senha-produto"></script>
 </body>
 </html>
