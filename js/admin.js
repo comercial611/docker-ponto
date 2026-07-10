@@ -4,6 +4,8 @@ let deleteTargetId = null;
 let deleteVendedorId = null;
 let csvPreviewRows = [];
 let csvPreviewApplied = false;
+let csvPreviewFileName = null;
+let csvLots = [];
 
 // Estado do painel de baixa
 let baixaProduto = null;
@@ -215,6 +217,7 @@ async function init() {
   await loadProducts();
   await loadVendedores();
   await loadHistory();
+  await loadCsvLots();
   subscribeRealtime();
 }
 
@@ -666,6 +669,7 @@ function updateCsvApplyState() {
 function clearCsvPreview() {
   csvPreviewRows = [];
   csvPreviewApplied = false;
+  csvPreviewFileName = null;
   const input = document.getElementById('csv-baixa-input');
   const summaryEl = document.getElementById('csv-preview-summary');
   const wrapEl = document.getElementById('csv-preview-table-wrap');
@@ -687,6 +691,7 @@ async function handleCsvPreview(event) {
 
   csvPreviewRows = [];
   csvPreviewApplied = false;
+  csvPreviewFileName = file.name;
   updateCsvApplyState();
   summaryEl.textContent = 'Lendo arquivo...';
   wrapEl.style.display = 'none';
@@ -790,10 +795,24 @@ async function confirmCsvBaixa() {
     quantidade: row.item.quantidade,
     referencia: row.item.ref || null,
     codigo_barras: row.item.barcode || null,
-    descricao: row.item.descricao || null
+    descricao: row.item.descricao || null,
+    match_by: row.matchBy || null
   }));
 
-  const { data, error } = await sb.rpc('registrar_baixa_csv_produtos', { p_itens: itens });
+  const resumo = {
+    total_linhas: csvPreviewRows.length,
+    produtos_encontrados: csvPreviewRows.filter(row => row.product).length,
+    maquinas_ignoradas: csvPreviewRows.filter(row => row.ignoredMachine).length,
+    nao_encontrados: csvPreviewRows.filter(row => !row.product && !row.ignoredMachine).length,
+    estoque_insuficiente: csvPreviewRows.filter(row => row.product && row.afterQty < 0).length,
+    total_csv: csvPreviewRows.reduce((sum, row) => sum + row.item.quantidade, 0)
+  };
+
+  const { data, error } = await sb.rpc('registrar_baixa_csv_produtos', {
+    p_itens: itens,
+    p_arquivo_nome: csvPreviewFileName,
+    p_resumo: resumo
+  });
 
   if (error) {
     btn.disabled = false;
@@ -808,6 +827,7 @@ async function confirmCsvBaixa() {
   msg.textContent = `${data?.length || applicable.length} baixa${(data?.length || applicable.length) === 1 ? '' : 's'} aplicada${(data?.length || applicable.length) === 1 ? '' : 's'} com sucesso.`;
   await loadProducts();
   await loadHistory();
+  await loadCsvLots();
   updateCsvApplyState();
 }
 
@@ -1084,6 +1104,71 @@ async function confirmBaixa() {
 // ─── HISTÓRICO ───────────────────────────────────────────
 let historyRows = [];
 
+async function loadCsvLots() {
+  const el = document.getElementById('csv-lots-list');
+  if (!el) return;
+
+  const { data, error } = await sb
+    .from('baixas_csv_lotes')
+    .select('*, baixas_csv_itens(*)')
+    .order('created_at', { ascending: false })
+    .limit(8);
+
+  if (error) {
+    csvLots = [];
+    el.innerHTML = '<div class="empty-state">Relatorio de CSV ainda nao configurado no Supabase.</div>';
+    return;
+  }
+
+  csvLots = data || [];
+  renderCsvLots();
+}
+
+function renderCsvLots() {
+  const el = document.getElementById('csv-lots-list');
+  if (!el) return;
+
+  if (!csvLots.length) {
+    el.innerHTML = '<div class="empty-state">Nenhuma importacao CSV registrada ainda.</div>';
+    return;
+  }
+
+  el.innerHTML = csvLots.map(lote => {
+    const time = new Date(lote.created_at).toLocaleString('pt-BR');
+    const itens = (lote.baixas_csv_itens || []).slice().sort((a, b) => a.produto_nome.localeCompare(b.produto_nome));
+    const details = itens.length
+      ? `<div class="csv-lot-details">
+          ${itens.map(item => `
+            <div class="csv-lot-item">
+              <div>
+                <strong>${escapeHtml(item.produto_nome)}</strong>
+                <div class="csv-muted">${escapeHtml(item.descricao_csv || '')}${item.referencia ? ` · Ref: ${escapeHtml(item.referencia)}` : ''}</div>
+              </div>
+              <div class="csv-lot-stat"><strong>${item.quantidade_csv}</strong>baixado</div>
+              <div class="csv-lot-stat"><strong>${item.quantidade_anterior}</strong>antes</div>
+              <div class="csv-lot-stat"><strong>${item.quantidade_nova}</strong>depois</div>
+            </div>
+          `).join('')}
+        </div>`
+      : '';
+
+    return `<div class="csv-lot-card">
+      <div class="csv-lot-main">
+        <div>
+          <div class="csv-lot-title">${escapeHtml(lote.arquivo_nome || 'CSV aplicado')}</div>
+          <div class="csv-lot-meta">${time} · ${escapeHtml(lote.aplicado_email || 'admin')}</div>
+        </div>
+        <div class="csv-lot-stat"><strong>${lote.produtos_encontrados || 0}</strong>encontrados</div>
+        <div class="csv-lot-stat"><strong>${lote.total_aplicado || 0}</strong>pecas baixadas</div>
+        <div class="csv-lot-stat"><strong>${lote.nao_encontrados || 0}</strong>nao encontrados</div>
+        <div class="csv-lot-stat"><strong>${lote.maquinas_ignoradas || 0}</strong>maquinas</div>
+        <div class="csv-lot-stat"><strong>${lote.estoque_insuficiente || 0}</strong>insuficiente</div>
+      </div>
+      ${details}
+    </div>`;
+  }).join('');
+}
+
 async function loadHistory() {
   const { data } = await sb.from('historico').select('*, produtos(nome, imagem_url)').order('created_at', { ascending: false }).limit(50);
   historyRows = data || [];
@@ -1134,6 +1219,9 @@ function subscribeRealtime() {
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'historico' }, async (payload) => {
       await loadHistory();
       pushHistoryNotification(payload.new);
+    })
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'baixas_csv_lotes' }, async () => {
+      await loadCsvLots();
     })
     .on('postgres_changes', { event: '*', schema: 'public', table: 'vendedores' }, async () => { await loadVendedores(); })
     .subscribe();
