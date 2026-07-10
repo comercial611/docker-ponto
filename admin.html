@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Estoque - Administração</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<link rel="stylesheet" href="css/admin.css?v=20260708-categorias">
+<link rel="stylesheet" href="css/admin.css?v=20260710-csv-produtos">
 </head>
 <body>
 
@@ -153,6 +153,30 @@
       <div class="success-msg" id="form-success"></div>
     </div>
 
+    <div class="csv-preview-card">
+      <div class="csv-preview-header">
+        <div>
+          <div class="section-title">Previa de baixa por CSV</div>
+          <p class="csv-preview-sub">Importe o relatorio do PDV para conferir as baixas de produtos antes de gravar qualquer alteracao.</p>
+        </div>
+        <label class="csv-upload-btn">
+          Selecionar CSV
+          <input type="file" id="csv-baixa-input" accept=".csv,text/csv" onchange="handleCsvPreview(event)">
+        </label>
+      </div>
+
+      <div class="csv-preview-summary" id="csv-preview-summary">
+        Nenhum arquivo selecionado.
+      </div>
+
+      <div class="table-wrap csv-preview-table-wrap" id="csv-preview-table-wrap" style="display:none">
+        <table>
+          <thead><tr><th>Status</th><th>Referencia</th><th>Cod. barras</th><th>Produto no CSV</th><th>Produto encontrado</th><th>Qtd. CSV</th><th>Estoque atual</th><th>Apos baixa</th></tr></thead>
+          <tbody id="csv-preview-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
     <div style="margin-top:28px;">
       <div class="section-header">
         <div class="section-title">Produtos cadastrados</div>
@@ -283,6 +307,6 @@
 <div class="toast-stack" id="toast-stack"></div>
 
 <script src="js/supabase-config.js"></script>
-<script src="js/admin.js?v=20260708-categorias"></script>
+<script src="js/admin.js?v=20260710-csv-produtos"></script>
 </body>
 </html>

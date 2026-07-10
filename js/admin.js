@@ -461,6 +461,245 @@ async function confirmDelete() {
   await loadProducts();
 }
 
+// ─── PREVIA CSV PRODUTOS ─────────────────────────────────
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, char => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#039;'
+  })[char]);
+}
+
+function normalizeCode(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function normalizeHeader(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '');
+}
+
+function parseCsvText(text) {
+  const rows = [];
+  let row = [];
+  let current = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    const next = text[i + 1];
+
+    if (char === '"') {
+      if (inQuotes && next === '"') {
+        current += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+
+    if (char === ',' && !inQuotes) {
+      row.push(current.trim());
+      current = '';
+      continue;
+    }
+
+    if ((char === '\n' || char === '\r') && !inQuotes) {
+      if (char === '\r' && next === '\n') i++;
+      row.push(current.trim());
+      if (row.some(cell => cell !== '')) rows.push(row);
+      row = [];
+      current = '';
+      continue;
+    }
+
+    current += char;
+  }
+
+  row.push(current.trim());
+  if (row.some(cell => cell !== '')) rows.push(row);
+  return rows;
+}
+
+function parseBrazilianQty(value) {
+  const clean = String(value || '').replace(/\s/g, '').replace(/\./g, '').replace(',', '.');
+  const parsed = Number(clean);
+  if (!Number.isFinite(parsed)) return 0;
+  return Math.max(0, Math.round(parsed));
+}
+
+function findHeaderIndex(headers, acceptedNames, fallbackIndex) {
+  const normalized = headers.map(normalizeHeader);
+  const foundIndex = normalized.findIndex(header => acceptedNames.includes(header));
+  return foundIndex >= 0 ? foundIndex : fallbackIndex;
+}
+
+function readCsvQty(row, qtyIndex) {
+  if (qtyIndex >= 0 && row[qtyIndex]) return row[qtyIndex];
+  return row.slice(2).filter(Boolean).pop() || '';
+}
+
+function csvRowsToItems(rows) {
+  if (rows.length < 2) return [];
+
+  const headers = rows[0] || [];
+  const refIndex = findHeaderIndex(headers, ['ref', 'referencia'], 0);
+  const descIndex = findHeaderIndex(headers, ['descricao', 'produto', 'nome'], 1);
+  const barcodeIndex = findHeaderIndex(headers, ['codigodebarra', 'codigobarra', 'codigobarras', 'codbarra', 'barras'], 8);
+  const qtyIndex = findHeaderIndex(headers, ['qtde', 'qtd', 'quantidade'], -1);
+
+  return rows.slice(1).map(row => {
+    const ref = row[refIndex] || '';
+    const descricao = row[descIndex] || '';
+    const barcode = row[barcodeIndex] || '';
+    const rawQty = readCsvQty(row, qtyIndex);
+    return { ref, descricao, barcode, quantidade: parseBrazilianQty(rawQty), rawQty };
+  }).filter(item => item.ref || item.descricao || item.barcode || item.quantidade);
+}
+
+function summarizeCsvItems(items) {
+  const grouped = new Map();
+
+  items.forEach(item => {
+    const key = `${normalizeCode(item.ref)}|${normalizeCode(item.barcode)}|${normalizeCode(item.descricao)}`;
+    const current = grouped.get(key);
+
+    if (current) {
+      current.quantidade += item.quantidade;
+      current.rawQty = String(current.quantidade);
+    } else {
+      grouped.set(key, { ...item });
+    }
+  });
+
+  return Array.from(grouped.values());
+}
+
+function productMatchesCsvItem(product, item) {
+  const ref = normalizeCode(item.ref);
+  const barcode = normalizeCode(item.barcode);
+
+  if (ref && (
+    normalizeCode(product.codigo_referencia) === ref ||
+    normalizeCode(product.codigo_interno) === ref ||
+    String(product.id) === ref
+  )) return 'Referencia';
+
+  if (barcode && (
+    normalizeCode(product.sku) === barcode ||
+    normalizeCode(product.codigo_interno) === barcode ||
+    normalizeCode(product.codigo_referencia) === barcode
+  )) return 'Codigo de barras';
+
+  return null;
+}
+
+function findProductForCsvItem(item) {
+  const productItems = products.filter(p => (p.categoria || 'maquina') === 'produto');
+  const machineItems = products.filter(p => (p.categoria || 'maquina') !== 'produto');
+
+  for (const product of productItems) {
+    const matchBy = productMatchesCsvItem(product, item);
+    if (matchBy) return { product, matchBy, ignoredMachine: null };
+  }
+
+  for (const machine of machineItems) {
+    const matchBy = productMatchesCsvItem(machine, item);
+    if (matchBy) return { product: null, matchBy, ignoredMachine: machine };
+  }
+
+  return { product: null, matchBy: null, ignoredMachine: null };
+}
+
+async function handleCsvPreview(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+
+  const summaryEl = document.getElementById('csv-preview-summary');
+  const wrapEl = document.getElementById('csv-preview-table-wrap');
+  const tbody = document.getElementById('csv-preview-tbody');
+
+  summaryEl.textContent = 'Lendo arquivo...';
+  wrapEl.style.display = 'none';
+  tbody.innerHTML = '';
+
+  const text = await file.text();
+  const rows = parseCsvText(text);
+  const items = summarizeCsvItems(csvRowsToItems(rows));
+
+  const previewRows = items.map(item => {
+    const { product, matchBy, ignoredMachine } = findProductForCsvItem(item);
+    const currentQty = product ? totalQty(product) : null;
+    const afterQty = product ? currentQty - item.quantidade : null;
+    let status = 'ok';
+    let label = 'Encontrado';
+
+    if (ignoredMachine) {
+      status = 'muted';
+      label = 'Maquina ignorada';
+    } else if (!product) {
+      status = 'err';
+      label = 'Nao encontrado';
+    } else if (item.quantidade <= 0) {
+      status = 'warn';
+      label = 'Qtd. invalida';
+    } else if (afterQty < 0) {
+      status = 'warn';
+      label = 'Estoque insuf.';
+    }
+
+    return { item, product, ignoredMachine, matchBy, currentQty, afterQty, status, label };
+  });
+
+  const found = previewRows.filter(row => row.product).length;
+  const ignoredMachines = previewRows.filter(row => row.ignoredMachine).length;
+  const notFound = previewRows.filter(row => !row.product && !row.ignoredMachine).length;
+  const insufficient = previewRows.filter(row => row.product && row.afterQty < 0).length;
+  const totalQtyCsv = previewRows.reduce((sum, row) => sum + row.item.quantidade, 0);
+
+  summaryEl.innerHTML = `
+    <strong>${escapeHtml(file.name)}</strong> - ${previewRows.length} linha${previewRows.length === 1 ? '' : 's'} -
+    ${found} produto${found === 1 ? '' : 's'} encontrado${found === 1 ? '' : 's'} -
+    ${ignoredMachines} maquina${ignoredMachines === 1 ? '' : 's'} ignorada${ignoredMachines === 1 ? '' : 's'} -
+    ${notFound} nao encontrado${notFound === 1 ? '' : 's'} -
+    ${insufficient} com estoque insuficiente -
+    total CSV: ${totalQtyCsv}
+  `;
+
+  if (!previewRows.length) {
+    tbody.innerHTML = '<tr><td colspan="8" class="empty-state">Nenhuma linha valida encontrada no CSV.</td></tr>';
+  } else {
+    tbody.innerHTML = previewRows.map(row => {
+      const foundLabel = row.product
+        ? `<strong>${escapeHtml(row.product.nome)}</strong><div class="csv-muted">ID ${row.product.id}</div>`
+        : row.ignoredMachine
+          ? `<span class="csv-muted">${escapeHtml(row.ignoredMachine.nome)}</span>`
+          : '<span class="csv-muted">-</span>';
+
+      return `
+        <tr>
+          <td><span class="csv-status ${row.status}">${row.label}</span>${row.matchBy ? `<div class="csv-muted">por ${row.matchBy}</div>` : ''}</td>
+          <td>${escapeHtml(row.item.ref || '-')}</td>
+          <td>${escapeHtml(row.item.barcode || '-')}</td>
+          <td>${escapeHtml(row.item.descricao || '-')}</td>
+          <td>${foundLabel}</td>
+          <td><strong>${row.item.quantidade}</strong><div class="csv-muted">${escapeHtml(row.item.rawQty || '')}</div></td>
+          <td>${row.product ? row.currentQty : '-'}</td>
+          <td>${row.product ? `<strong class="${row.afterQty < 0 ? 'qty-out' : ''}">${row.afterQty}</strong>` : '-'}</td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  wrapEl.style.display = 'block';
+}
+
 // ─── VENDEDORES ──────────────────────────────────────────
 let resetSenhaTargetId = null;
 
