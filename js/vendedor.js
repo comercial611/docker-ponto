@@ -341,7 +341,7 @@ function renderCard(p) {
     </div>
     ${qtyRowHTML}
     ${isProduct
-      ? '<button class="btn-baixa-card is-locked" disabled>Baixa por CSV</button>'
+      ? `<button class="btn-baixa-card is-product-manual" onclick="openBaixaPanel(${p.id})">Baixa manual</button>`
       : `<button class="btn-baixa-card" onclick="openBaixaPanel(${p.id})">Dar baixa</button>`}
   </div>`;
 }
@@ -376,7 +376,7 @@ function renderRow(p) {
     <div class="prod-row-qty">${qtyHTML}</div>
     <span class="prod-row-badge ${status.cls}">${status.label}</span>
     ${isProduct
-      ? '<button class="btn-baixa-row is-locked" disabled>Baixa por CSV</button>'
+      ? `<button class="btn-baixa-row is-product-manual" onclick="openBaixaPanel(${p.id})">Baixa manual</button>`
       : `<button class="btn-baixa-row" onclick="openBaixaPanel(${p.id})">Dar baixa</button>`}
   </div>`;
 }
@@ -385,12 +385,13 @@ function renderRow(p) {
 function openBaixaPanel(id) {
   const p = products.find(x => x.id === id);
   if (!p) return;
-  if (productCategory(p) === 'produto') {
-    showToast('Produtos terao baixa pelo CSV. Baixa manual com senha fica para a proxima etapa.');
-    return;
-  }
+  const isProduct = productCategory(p) === 'produto';
   baixaProduto = p;
   baixaVoltagemSelecionada = null;
+
+  document.getElementById('baixa-panel-title').textContent = isProduct
+    ? 'Baixa manual de produto'
+    : 'Dar baixa no estoque';
 
   document.getElementById('baixa-prod-info').innerHTML = `
     ${p.imagem_url
@@ -416,6 +417,8 @@ function openBaixaPanel(id) {
   }
 
   document.getElementById('baixa-qty').value = '';
+  document.getElementById('baixa-product-password').value = '';
+  document.getElementById('baixa-product-password-wrap').style.display = isProduct ? 'block' : 'none';
   document.getElementById('baixa-error').textContent = '';
   updateBaixaPreview();
 
@@ -426,6 +429,8 @@ function openBaixaPanel(id) {
 function closeBaixaPanel() {
   document.getElementById('baixa-overlay').classList.remove('open');
   document.getElementById('baixa-panel').classList.remove('open');
+  document.getElementById('baixa-product-password-wrap').style.display = 'none';
+  document.getElementById('baixa-product-password').value = '';
   baixaProduto = null;
   baixaVoltagemSelecionada = null;
 }
@@ -462,6 +467,7 @@ async function confirmBaixa() {
   errorEl.textContent = '';
 
   if (!baixaProduto || !vendedorAtual) return;
+  const isProduct = productCategory(baixaProduto) === 'produto';
   if (baixaProduto.tem_voltagem && !baixaVoltagemSelecionada) {
     errorEl.textContent = 'Selecione a voltagem.';
     return;
@@ -479,6 +485,12 @@ async function confirmBaixa() {
     return;
   }
 
+  const senhaProduto = document.getElementById('baixa-product-password').value.trim();
+  if (isProduct && !senhaProduto) {
+    errorEl.textContent = 'Informe a senha de autorizacao.';
+    return;
+  }
+
   const novaQty = atual - qty;
   const btn = document.getElementById('btn-confirm-baixa');
   btn.disabled = true;
@@ -488,11 +500,16 @@ async function confirmBaixa() {
     ? (baixaVoltagemSelecionada === 'v110' ? '110v' : '220v')
     : null;
 
-  const { data, error } = await sb.rpc('registrar_baixa_venda', {
+  const rpcName = isProduct ? 'registrar_baixa_produto_manual' : 'registrar_baixa_venda';
+  const rpcParams = {
     p_produto_id: baixaProduto.id,
     p_quantidade: qty,
     p_voltagem: voltLabel
-  });
+  };
+
+  if (isProduct) rpcParams.p_senha = senhaProduto;
+
+  const { data, error } = await sb.rpc(rpcName, rpcParams);
 
   btn.disabled = false;
   btn.textContent = 'Confirmar baixa';
