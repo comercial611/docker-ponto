@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Estoque - Administração</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<link rel="stylesheet" href="css/admin.css?v=20260710-aplicar-csv">
+<link rel="stylesheet" href="css/admin.css?v=20260710-relatorio-csv">
 </head>
 <body>
 
@@ -243,6 +243,12 @@
   <!-- HISTÓRICO -->
   <div class="tab-content" id="tab-historico">
     <div class="section-header">
+      <div class="section-title">Últimas importações CSV</div>
+      <button class="btn-cancel" onclick="loadCsvLots()">Atualizar</button>
+    </div>
+    <div class="csv-lots-list" id="csv-lots-list"><div class="empty-state">Carregando importações...</div></div>
+
+    <div class="section-header">
       <div class="section-title">Últimas atualizações de estoque</div>
       <input class="search-input" id="search-historico" placeholder="Buscar produto ou vendedor..." oninput="renderHistory()">
     </div>
@@ -312,6 +318,6 @@
 <div class="toast-stack" id="toast-stack"></div>
 
 <script src="js/supabase-config.js"></script>
-<script src="js/admin.js?v=20260710-aplicar-csv"></script>
+<script src="js/admin.js?v=20260710-relatorio-csv"></script>
 </body>
 </html>
