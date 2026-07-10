@@ -179,6 +179,47 @@ button, input, textarea {
   font-size: 15px;
 }
 
+.type-filter-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.type-filter-chip {
+  min-height: 42px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--muted);
+  padding: 0 10px;
+  font-weight: 850;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+
+.type-filter-chip span {
+  color: var(--muted);
+  background: var(--surface2);
+  border-radius: 999px;
+  padding: 2px 7px;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.type-filter-chip.active {
+  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.type-filter-chip.active span {
+  color: var(--accent);
+  background: #fff;
+}
+
 .filter-row {
   display: flex;
   gap: 8px;

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Vendedor - Estoque</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<link rel="stylesheet" href="css/vendedor.css">
+<link rel="stylesheet" href="css/vendedor.css?v=20260710-separa-produtos">
 
 </head>
 <body>
@@ -47,7 +47,7 @@
       <nav class="sidebar-filters">
         <div class="filter-eyebrow">Status</div>
         <button class="filter-pill active" data-filter="" onclick="setStatusFilter('')">
-          <span class="filter-pill-left"><span class="filter-dot all"></span>Todos os produtos</span>
+          <span class="filter-pill-left"><span class="filter-dot all"></span>Todos os itens</span>
           <span class="filter-count" id="count-all">0</span>
         </button>
         <button class="filter-pill" data-filter="ok" onclick="setStatusFilter('ok')">
@@ -100,6 +100,15 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
           </button>
         </div>
+      </div>
+
+      <div class="product-type-tabs" role="tablist" aria-label="Tipo de estoque">
+        <button class="product-type-tab active" id="tab-type-maquina" onclick="setProductTypeFilter('maquina')" type="button">
+          Máquinas / Prensas <span id="count-type-maquina">0</span>
+        </button>
+        <button class="product-type-tab" id="tab-type-produto" onclick="setProductTypeFilter('produto')" type="button">
+          Produtos <span id="count-type-produto">0</span>
+        </button>
       </div>
 
       <section class="seller-history is-collapsed" id="seller-history">
@@ -158,6 +167,6 @@
 <div class="toast" id="toast"></div>
 
 <script src="js/supabase-config.js"></script>
-<script src="js/vendedor.js"></script>
+<script src="js/vendedor.js?v=20260710-separa-produtos"></script>
 </body>
 </html>

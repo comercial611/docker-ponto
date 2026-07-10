@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>App Funcionário - Estoque</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<link rel="stylesheet" href="css/funcionario-app.css">
+<link rel="stylesheet" href="css/funcionario-app.css?v=20260710-separa-produtos">
 </head>
 <body>
 
@@ -33,6 +33,14 @@
 
   <section class="search-panel">
     <input class="search-input" id="search-input" placeholder="Buscar produto, código ou referência" oninput="renderProducts()">
+    <div class="type-filter-row" role="tablist" aria-label="Tipo de estoque">
+      <button class="type-filter-chip active" id="type-filter-maquina" onclick="setProductTypeFilter('maquina')" type="button">
+        Máquinas / Prensas <span id="count-type-maquina">0</span>
+      </button>
+      <button class="type-filter-chip" id="type-filter-produto" onclick="setProductTypeFilter('produto')" type="button">
+        Produtos <span id="count-type-produto">0</span>
+      </button>
+    </div>
     <div class="filter-row">
       <button class="filter-chip active" data-filter="" onclick="setStatusFilter('')">Todos</button>
       <button class="filter-chip" data-filter="low" onclick="setStatusFilter('low')">Baixo</button>
@@ -54,6 +62,6 @@
 <div class="toast" id="toast"></div>
 
 <script src="js/supabase-config.js"></script>
-<script src="js/funcionario-app.js"></script>
+<script src="js/funcionario-app.js?v=20260710-separa-produtos"></script>
 </body>
 </html>

@@ -110,7 +110,19 @@ function toggleTheme() {
 
 // ─── PRODUTOS (somente leitura + baixa) ──────────────────
 let statusFilter = '';
+let productTypeFilter = 'maquina';
 let viewMode = 'list';
+
+function productCategory(p) {
+  return p.categoria || 'maquina';
+}
+
+function setProductTypeFilter(type) {
+  productTypeFilter = type === 'produto' ? 'produto' : 'maquina';
+  document.getElementById('tab-type-maquina')?.classList.toggle('active', productTypeFilter === 'maquina');
+  document.getElementById('tab-type-produto')?.classList.toggle('active', productTypeFilter === 'produto');
+  renderCards();
+}
 
 function setStatusFilter(status) {
   statusFilter = status;
@@ -236,11 +248,18 @@ function getStatus(p) {
 
 function updateFilterCounts() {
   const counts = { ok: 0, low: 0, out: 0 };
-  products.forEach(p => { counts[getStatus(p).cls]++; });
-  document.getElementById('count-all').textContent = products.length;
+  const visibleTypeProducts = products.filter(p => productCategory(p) === productTypeFilter);
+  const machineCount = products.filter(p => productCategory(p) === 'maquina').length;
+  const productCount = products.filter(p => productCategory(p) === 'produto').length;
+
+  visibleTypeProducts.forEach(p => { counts[getStatus(p).cls]++; });
+
+  document.getElementById('count-all').textContent = visibleTypeProducts.length;
   document.getElementById('count-ok').textContent = counts.ok;
   document.getElementById('count-low').textContent = counts.low;
   document.getElementById('count-out').textContent = counts.out;
+  document.getElementById('count-type-maquina').textContent = machineCount;
+  document.getElementById('count-type-produto').textContent = productCount;
 }
 
 function codesArray(p) {
@@ -248,6 +267,7 @@ function codesArray(p) {
   if (p.codigo_fabricante) codes.push(`Fab: ${p.codigo_fabricante}`);
   if (p.codigo_interno) codes.push(`Int: ${p.codigo_interno}`);
   if (p.codigo_referencia) codes.push(`Ref: ${p.codigo_referencia}`);
+  if (p.sku) codes.push(`Barras: ${p.sku}`);
   return codes;
 }
 
@@ -260,12 +280,14 @@ function renderCards() {
       p.nome.toLowerCase().includes(q) ||
       (p.codigo_fabricante||'').toLowerCase().includes(q) ||
       (p.codigo_interno||'').toLowerCase().includes(q) ||
-      (p.codigo_referencia||'').toLowerCase().includes(q);
+      (p.codigo_referencia||'').toLowerCase().includes(q) ||
+      (p.sku||'').toLowerCase().includes(q);
+    const matchesType = productCategory(p) === productTypeFilter;
     const matchesStatus = !statusFilter || getStatus(p).cls === statusFilter;
-    return matchesSearch && matchesStatus;
+    return matchesSearch && matchesType && matchesStatus;
   });
 
-  const countText = `${filtered.length} produto${filtered.length === 1 ? '' : 's'}`;
+  const countText = `${filtered.length} item${filtered.length === 1 ? '' : 's'}`;
   const topbarCount = document.getElementById('topbar-count');
   if (topbarCount) topbarCount.textContent = countText;
   const topbarCountDesktop = document.getElementById('topbar-count-desktop');
@@ -282,6 +304,7 @@ function renderCards() {
 
 function renderCard(p) {
   const status = getStatus(p);
+  const isProduct = productCategory(p) === 'produto';
 
   const imgHTML = p.imagem_url
     ? `<img class="prod-img" src="${p.imagem_url}" alt="${p.nome}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
@@ -317,12 +340,15 @@ function renderCard(p) {
       </div>
     </div>
     ${qtyRowHTML}
-    <button class="btn-baixa-card" onclick="openBaixaPanel(${p.id})">Dar baixa</button>
+    ${isProduct
+      ? '<button class="btn-baixa-card is-locked" disabled>Baixa por CSV</button>'
+      : `<button class="btn-baixa-card" onclick="openBaixaPanel(${p.id})">Dar baixa</button>`}
   </div>`;
 }
 
 function renderRow(p) {
   const status = getStatus(p);
+  const isProduct = productCategory(p) === 'produto';
 
   const imgHTML = p.imagem_url
     ? `<img class="prod-row-img" src="${p.imagem_url}" alt="${p.nome}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
@@ -349,7 +375,9 @@ function renderRow(p) {
     </div>
     <div class="prod-row-qty">${qtyHTML}</div>
     <span class="prod-row-badge ${status.cls}">${status.label}</span>
-    <button class="btn-baixa-row" onclick="openBaixaPanel(${p.id})">Dar baixa</button>
+    ${isProduct
+      ? '<button class="btn-baixa-row is-locked" disabled>Baixa por CSV</button>'
+      : `<button class="btn-baixa-row" onclick="openBaixaPanel(${p.id})">Dar baixa</button>`}
   </div>`;
 }
 
@@ -357,6 +385,10 @@ function renderRow(p) {
 function openBaixaPanel(id) {
   const p = products.find(x => x.id === id);
   if (!p) return;
+  if (productCategory(p) === 'produto') {
+    showToast('Produtos terao baixa pelo CSV. Baixa manual com senha fica para a proxima etapa.');
+    return;
+  }
   baixaProduto = p;
   baixaVoltagemSelecionada = null;
 
