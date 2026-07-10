@@ -108,6 +108,38 @@
 
   .grid-topbar { display: none; align-items: center; justify-content: space-between; padding: 18px 28px 4px; }
 
+  .product-type-tabs {
+    display: flex;
+    gap: 8px;
+    padding: 14px 28px 4px;
+    flex-wrap: wrap;
+  }
+  .product-type-tab {
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--muted);
+    border-radius: 7px;
+    min-height: 36px;
+    padding: 0 14px;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .product-type-tab span {
+    color: var(--muted-2);
+    font-size: 11.5px;
+    font-weight: 800;
+  }
+  .product-type-tab.active {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    color: var(--accent-dark);
+  }
+  .product-type-tab.active span { color: var(--accent); }
+
   .products-grid {
     flex: 1; padding: 8px 28px 60px; display: grid; gap: 14px;
     grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -194,6 +226,16 @@
   .btn-baixa-card { width: 100%; background: var(--red-soft); border: 1px solid transparent; border-radius: 6px; color: var(--red); font-size: 12.5px; font-weight: 600; padding: 9px; cursor: pointer; margin-top: 12px; transition: background .12s; }
   .btn-baixa-card:hover { background: #fde4e4; }
   .btn-baixa-card:active { background: #fbd0d0; }
+  .btn-baixa-card.is-locked,
+  .btn-baixa-row.is-locked {
+    background: var(--bg);
+    color: var(--muted);
+    border: 1px solid var(--border);
+    cursor: not-allowed;
+    opacity: .85;
+  }
+  .btn-baixa-card.is-locked:hover,
+  .btn-baixa-row.is-locked:hover { background: var(--bg); }
 
   /* LIST VIEW (lista compacta) */
   .prod-row { display: flex; align-items: center; gap: 14px; padding: 11px 12px; border-bottom: 1px solid var(--border); transition: background .12s; border-radius: 6px; }
@@ -270,6 +312,8 @@
     .main-topbar { display: flex; padding: 12px 16px; }
     .view-toggle { display: none; }
     .grid-topbar { display: none !important; }
+    .product-type-tabs { padding: 12px 16px 0; }
+    .product-type-tab { flex: 1; justify-content: center; }
     .products-grid { padding: 14px 16px 60px; grid-template-columns: 1fr !important; gap: 10px; display: grid !important; }
     .seller-history { margin: 14px 16px 0; }
     .seller-history-header { padding: 12px 14px; }

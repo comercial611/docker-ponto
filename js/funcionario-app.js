@@ -1,6 +1,7 @@
 let products = [];
 let selectedProduct = null;
 let statusFilter = '';
+let productTypeFilter = 'maquina';
 let userEmail = null;
 let historyByProduct = {};
 
@@ -75,6 +76,17 @@ function totalQty(product) {
     : Number(product.quantidade) || 0;
 }
 
+function productCategory(product) {
+  return product.categoria || 'maquina';
+}
+
+function setProductTypeFilter(type) {
+  productTypeFilter = type === 'produto' ? 'produto' : 'maquina';
+  document.getElementById('type-filter-maquina')?.classList.toggle('active', productTypeFilter === 'maquina');
+  document.getElementById('type-filter-produto')?.classList.toggle('active', productTypeFilter === 'produto');
+  renderProducts();
+}
+
 function getStatus(product) {
   const qty = totalQty(product);
 
@@ -104,6 +116,7 @@ function productCodes(product) {
   if (product.codigo_fabricante) codes.push(`Fab: ${product.codigo_fabricante}`);
   if (product.codigo_interno) codes.push(`Int: ${product.codigo_interno}`);
   if (product.codigo_referencia) codes.push(`Ref: ${product.codigo_referencia}`);
+  if (product.sku) codes.push(`Barras: ${product.sku}`);
 
   return codes;
 }
@@ -111,9 +124,15 @@ function productCodes(product) {
 function renderProducts() {
   const query = document.getElementById('search-input').value.trim().toLowerCase();
   const listEl = document.getElementById('products-list');
+  const machineCount = products.filter(product => productCategory(product) === 'maquina').length;
+  const productCount = products.filter(product => productCategory(product) === 'produto').length;
+
+  document.getElementById('count-type-maquina').textContent = machineCount;
+  document.getElementById('count-type-produto').textContent = productCount;
 
   const filtered = products.filter(product => {
     const status = getStatus(product);
+    const matchesType = productCategory(product) === productTypeFilter;
     const matchesStatus = !statusFilter || status.cls === statusFilter;
     const haystack = [
       product.nome,
@@ -123,7 +142,7 @@ function renderProducts() {
       product.sku
     ].filter(Boolean).join(' ').toLowerCase();
 
-    return matchesStatus && haystack.includes(query);
+    return matchesType && matchesStatus && haystack.includes(query);
   });
 
   if (!filtered.length) {
