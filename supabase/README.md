@@ -14,6 +14,7 @@ Esta pasta documenta a configuracao de seguranca usada no Supabase de producao.
 8. `08-atualizar-observacao-produto.sql`
 9. `09-categoria-produtos.sql`
 10. `10-baixa-manual-produto-senha.sql`
+11. `11-listar-baixas-manuais-produto.sql`
 
 ## O que foi protegido
 
@@ -37,6 +38,7 @@ Esta pasta documenta a configuracao de seguranca usada no Supabase de producao.
 - `08-atualizar-observacao-produto.sql`: cria a funcao segura usada pelo app funcionario para editar observacoes do produto.
 - `09-categoria-produtos.sql`: adiciona a categoria `maquina`/`produto` em produtos, mantendo os itens atuais como maquinas.
 - `10-baixa-manual-produto-senha.sql`: bloqueia baixa de produtos pela funcao comum e cria baixa manual de produtos com senha validada no Supabase.
+- `11-listar-baixas-manuais-produto.sql`: inclui baixas manuais de produtos na lista de baixas recentes do vendedor.
 - `rollback-policies-abertas.sql`: volta para as policies antigas em caso de emergencia.
 
 ## Atencao

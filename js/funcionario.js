@@ -2,6 +2,7 @@ let products = [];
 let newQtys = {};       // { id: qty }                  -> produtos sem voltagem
 let newQtysVolt = {};   // { id: { v110: x, v220: y } }  -> produtos com voltagem
 let userEmail = null;
+let realtimeChannel = null;
 
 async function checkSession() {
   const { data: { session } } = await sb.auth.getSession();
@@ -10,11 +11,13 @@ async function checkSession() {
     document.getElementById('user-email').textContent = userEmail;
     showApp();
     await loadProducts();
+    subscribeRealtime();
   }
 }
 
 sb.auth.onAuthStateChange((event) => {
   if (event === 'SIGNED_OUT') {
+    cleanupRealtime();
     document.getElementById('app-screen').style.display = 'none';
     document.getElementById('login-screen').style.display = 'flex';
   }
@@ -30,6 +33,7 @@ async function doLogin() {
   document.getElementById('user-email').textContent = userEmail;
   showApp();
   await loadProducts();
+  subscribeRealtime();
 }
 
 async function doLogout() { await sb.auth.signOut(); }
@@ -39,16 +43,25 @@ function showApp() {
   document.getElementById('app-screen').style.display = 'block';
 }
 
-async function loadProducts() {
+async function loadProducts(options = {}) {
+  const oldQtys = { ...newQtys };
+  const oldQtysVolt = Object.fromEntries(
+    Object.entries(newQtysVolt).map(([id, value]) => [id, { ...value }])
+  );
+
   const { data } = await sb.from('produtos').select('*').order('nome');
   products = data || [];
   newQtys = {};
   newQtysVolt = {};
   products.forEach(p => {
     if (p.tem_voltagem) {
-      newQtysVolt[p.id] = { v110: p.quantidade_110v || 0, v220: p.quantidade_220v || 0 };
+      newQtysVolt[p.id] = options.preserveDrafts && oldQtysVolt[p.id]
+        ? oldQtysVolt[p.id]
+        : { v110: p.quantidade_110v || 0, v220: p.quantidade_220v || 0 };
     } else {
-      newQtys[p.id] = p.quantidade;
+      newQtys[p.id] = options.preserveDrafts && oldQtys[p.id] !== undefined
+        ? oldQtys[p.id]
+        : p.quantidade;
     }
   });
   renderCards();
@@ -264,6 +277,22 @@ function showToast(msg) {
   const t = document.getElementById('toast');
   t.textContent = msg; t.classList.add('show');
   setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+function subscribeRealtime() {
+  if (realtimeChannel) return;
+
+  realtimeChannel = sb.channel('funcionario-estoque-realtime')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'produtos' }, async () => {
+      await loadProducts({ preserveDrafts: true });
+    })
+    .subscribe();
+}
+
+function cleanupRealtime() {
+  if (!realtimeChannel) return;
+  sb.removeChannel(realtimeChannel);
+  realtimeChannel = null;
 }
 
 document.getElementById('login-pass').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });

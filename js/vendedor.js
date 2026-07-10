@@ -2,6 +2,7 @@ let products = [];
 let vendedorAtual = null; // registro da tabela `vendedores` ligado ao login atual
 let minhasBaixas = [];
 let sellerHistoryOpen = false;
+let realtimeChannel = null;
 
 // Estado do painel de baixa
 let baixaProduto = null;
@@ -15,6 +16,7 @@ async function checkSession() {
     if (vendedorAtual) {
       showApp();
       await Promise.all([loadProducts(), loadMinhasBaixas()]);
+      subscribeRealtime();
     } else {
       await sb.auth.signOut();
     }
@@ -23,6 +25,7 @@ async function checkSession() {
 
 sb.auth.onAuthStateChange((event) => {
   if (event === 'SIGNED_OUT') {
+    cleanupRealtime();
     document.getElementById('app-screen').style.display = 'none';
     document.getElementById('login-screen').style.display = 'flex';
   }
@@ -61,6 +64,7 @@ async function doLogin() {
   document.getElementById('user-name').textContent = vendedorAtual.nome;
   showApp();
   await Promise.all([loadProducts(), loadMinhasBaixas()]);
+  subscribeRealtime();
 }
 
 async function doLogout() { await sb.auth.signOut(); }
@@ -143,7 +147,21 @@ function setViewMode(mode) {
 async function loadProducts() {
   const { data } = await sb.from('produtos').select('*').order('nome');
   products = data || [];
+  syncOpenBaixaProduct();
   renderCards();
+}
+
+function syncOpenBaixaProduct() {
+  if (!baixaProduto) return;
+
+  const updated = products.find(product => product.id === baixaProduto.id);
+  if (!updated) {
+    closeBaixaPanel();
+    return;
+  }
+
+  baixaProduto = updated;
+  updateBaixaPreview();
 }
 
 
@@ -552,6 +570,22 @@ function showToast(msg) {
   const t = document.getElementById('toast');
   t.textContent = msg; t.classList.add('show');
   setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+function subscribeRealtime() {
+  if (realtimeChannel) return;
+
+  realtimeChannel = sb.channel('vendedor-estoque-realtime')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'produtos' }, async () => {
+      await Promise.all([loadProducts(), loadMinhasBaixas()]);
+    })
+    .subscribe();
+}
+
+function cleanupRealtime() {
+  if (!realtimeChannel) return;
+  sb.removeChannel(realtimeChannel);
+  realtimeChannel = null;
 }
 
 document.getElementById('login-pass').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });

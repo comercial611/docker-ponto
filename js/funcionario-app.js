@@ -4,6 +4,7 @@ let statusFilter = '';
 let productTypeFilter = 'maquina';
 let userEmail = null;
 let historyByProduct = {};
+let realtimeChannel = null;
 
 async function checkSession() {
   const { data: { session } } = await sb.auth.getSession();
@@ -13,11 +14,13 @@ async function checkSession() {
     document.getElementById('user-email').textContent = userEmail;
     showApp();
     await loadProducts();
+    subscribeRealtime();
   }
 }
 
 sb.auth.onAuthStateChange((event) => {
   if (event === 'SIGNED_OUT') {
+    cleanupRealtime();
     document.getElementById('app-screen').style.display = 'none';
     document.getElementById('login-screen').style.display = 'flex';
   }
@@ -44,6 +47,7 @@ async function doLogin() {
   document.getElementById('user-email').textContent = userEmail;
   showApp();
   await loadProducts();
+  subscribeRealtime();
 }
 
 async function doLogout() {
@@ -67,7 +71,20 @@ async function loadProducts() {
   }
 
   products = data || [];
+  syncSelectedProduct();
   renderProducts();
+}
+
+function syncSelectedProduct() {
+  if (!selectedProduct) return;
+
+  const updated = products.find(product => product.id === selectedProduct.id);
+  if (!updated) {
+    closeProductSheet();
+    return;
+  }
+
+  selectedProduct = updated;
 }
 
 function totalQty(product) {
@@ -416,11 +433,12 @@ function renderProductHistory(productId) {
   }
 
   historyEl.innerHTML = rows.map(row => {
-    const who = row.tipo === 'baixa'
+    const isBaixa = String(row.tipo || '').startsWith('baixa');
+    const who = isBaixa
       ? (row.vendedor || row.usuario || 'Vendedor')
       : (row.usuario || 'Funcionário');
 
-    const type = row.tipo === 'baixa' ? 'Baixa' : 'Contagem';
+    const type = isBaixa ? 'Baixa' : 'Contagem';
     const volt = row.voltagem ? ` · ${row.voltagem.toUpperCase()}` : '';
     const time = new Date(row.created_at).toLocaleString('pt-BR', {
       dateStyle: 'short',
@@ -463,6 +481,25 @@ function escapeHtml(value) {
 
 function escapeAttr(value) {
   return escapeHtml(value).replace(/`/g, '&#096;');
+}
+
+function subscribeRealtime() {
+  if (realtimeChannel) return;
+
+  realtimeChannel = sb.channel('funcionario-app-estoque-realtime')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'produtos' }, async () => {
+      await loadProducts();
+      if (selectedProduct) {
+        await loadProductHistory(selectedProduct.id);
+      }
+    })
+    .subscribe();
+}
+
+function cleanupRealtime() {
+  if (!realtimeChannel) return;
+  sb.removeChannel(realtimeChannel);
+  realtimeChannel = null;
 }
 
 document.getElementById('login-pass').addEventListener('keydown', event => {
