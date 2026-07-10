@@ -2,6 +2,8 @@ let products = [];
 let vendedores = [];
 let deleteTargetId = null;
 let deleteVendedorId = null;
+let csvPreviewRows = [];
+let csvPreviewApplied = false;
 
 // Estado do painel de baixa
 let baixaProduto = null;
@@ -159,6 +161,10 @@ function checkVoltDelta(p, prev, field, voltLabel) {
 }
 
 // ─── AUTH ────────────────────────────────────────────────
+function isBaixaTipo(tipo) {
+  return String(tipo || '').startsWith('baixa');
+}
+
 function pushHistoryNotification(record) {
   if (!record) return;
 
@@ -169,7 +175,7 @@ function pushHistoryNotification(record) {
   const volt = record.voltagem ? ` (${record.voltagem})` : '';
   const sourceId = `historico-${record.id}`;
 
-  if (record.tipo === 'baixa') {
+  if (isBaixaTipo(record.tipo)) {
     const vendedor = record.vendedor || record.usuario || 'vendedor';
     pushNotification('blue', `<strong>${productName}</strong>${volt}: baixa de ${before} para ${after} por ${vendedor}`, sourceId);
     return;
@@ -617,6 +623,60 @@ function findProductForCsvItem(item) {
   return { product: null, matchBy: null, ignoredMachine: null };
 }
 
+function csvApplicableRows() {
+  return csvPreviewRows.filter(row => row.product && row.item.quantidade > 0 && row.afterQty >= 0);
+}
+
+function updateCsvApplyState() {
+  const btn = document.getElementById('csv-apply-btn');
+  const msg = document.getElementById('csv-apply-message');
+  if (!btn || !msg) return;
+
+  msg.className = 'csv-apply-message';
+  const applicable = csvApplicableRows();
+  const invalid = csvPreviewRows.filter(row => row.product && row.item.quantidade <= 0).length;
+  const insufficient = csvPreviewRows.filter(row => row.product && row.afterQty < 0).length;
+
+  if (csvPreviewApplied) {
+    btn.disabled = true;
+    btn.textContent = 'Baixa aplicada';
+    msg.classList.add('ok');
+    msg.textContent = 'CSV aplicado. Se precisar repetir, selecione o arquivo novamente.';
+    return;
+  }
+
+  btn.textContent = applicable.length ? `Aplicar baixa (${applicable.length})` : 'Aplicar baixa';
+  btn.disabled = !applicable.length || invalid > 0 || insufficient > 0;
+
+  if (!csvPreviewRows.length) {
+    msg.textContent = '';
+  } else if (invalid > 0) {
+    msg.classList.add('err');
+    msg.textContent = 'Existe produto encontrado com quantidade invalida.';
+  } else if (insufficient > 0) {
+    msg.classList.add('err');
+    msg.textContent = 'Existe produto encontrado com estoque insuficiente.';
+  } else if (applicable.length) {
+    msg.textContent = 'Somente produtos encontrados serao baixados; maquinas e nao encontrados ficam de fora.';
+  } else {
+    msg.textContent = 'Nenhum produto valido para aplicar.';
+  }
+}
+
+function clearCsvPreview() {
+  csvPreviewRows = [];
+  csvPreviewApplied = false;
+  const input = document.getElementById('csv-baixa-input');
+  const summaryEl = document.getElementById('csv-preview-summary');
+  const wrapEl = document.getElementById('csv-preview-table-wrap');
+  const tbody = document.getElementById('csv-preview-tbody');
+  if (input) input.value = '';
+  if (summaryEl) summaryEl.textContent = 'Nenhum arquivo selecionado.';
+  if (wrapEl) wrapEl.style.display = 'none';
+  if (tbody) tbody.innerHTML = '';
+  updateCsvApplyState();
+}
+
 async function handleCsvPreview(event) {
   const file = event.target.files?.[0];
   if (!file) return;
@@ -625,6 +685,9 @@ async function handleCsvPreview(event) {
   const wrapEl = document.getElementById('csv-preview-table-wrap');
   const tbody = document.getElementById('csv-preview-tbody');
 
+  csvPreviewRows = [];
+  csvPreviewApplied = false;
+  updateCsvApplyState();
   summaryEl.textContent = 'Lendo arquivo...';
   wrapEl.style.display = 'none';
   tbody.innerHTML = '';
@@ -656,6 +719,7 @@ async function handleCsvPreview(event) {
 
     return { item, product, ignoredMachine, matchBy, currentQty, afterQty, status, label };
   });
+  csvPreviewRows = previewRows;
 
   const found = previewRows.filter(row => row.product).length;
   const ignoredMachines = previewRows.filter(row => row.ignoredMachine).length;
@@ -698,6 +762,53 @@ async function handleCsvPreview(event) {
   }
 
   wrapEl.style.display = 'block';
+  updateCsvApplyState();
+}
+
+async function confirmCsvBaixa() {
+  const btn = document.getElementById('csv-apply-btn');
+  const msg = document.getElementById('csv-apply-message');
+  const applicable = csvApplicableRows();
+  const invalid = csvPreviewRows.filter(row => row.product && row.item.quantidade <= 0).length;
+  const insufficient = csvPreviewRows.filter(row => row.product && row.afterQty < 0).length;
+
+  if (!applicable.length || invalid > 0 || insufficient > 0 || csvPreviewApplied) {
+    updateCsvApplyState();
+    return;
+  }
+
+  const ok = confirm(`Aplicar baixa em ${applicable.length} produto${applicable.length === 1 ? '' : 's'} encontrado${applicable.length === 1 ? '' : 's'}?`);
+  if (!ok) return;
+
+  btn.disabled = true;
+  btn.textContent = 'Aplicando...';
+  msg.className = 'csv-apply-message';
+  msg.textContent = '';
+
+  const itens = applicable.map(row => ({
+    produto_id: row.product.id,
+    quantidade: row.item.quantidade,
+    referencia: row.item.ref || null,
+    codigo_barras: row.item.barcode || null,
+    descricao: row.item.descricao || null
+  }));
+
+  const { data, error } = await sb.rpc('registrar_baixa_csv_produtos', { p_itens: itens });
+
+  if (error) {
+    btn.disabled = false;
+    updateCsvApplyState();
+    msg.className = 'csv-apply-message err';
+    msg.textContent = error.message || 'Nao foi possivel aplicar a baixa por CSV.';
+    return;
+  }
+
+  csvPreviewApplied = true;
+  msg.className = 'csv-apply-message ok';
+  msg.textContent = `${data?.length || applicable.length} baixa${(data?.length || applicable.length) === 1 ? '' : 's'} aplicada${(data?.length || applicable.length) === 1 ? '' : 's'} com sucesso.`;
+  await loadProducts();
+  await loadHistory();
+  updateCsvApplyState();
 }
 
 // ─── VENDEDORES ──────────────────────────────────────────
@@ -990,16 +1101,17 @@ function renderHistory() {
   if (!rows.length) { el.innerHTML = '<div class="empty-state">Nenhuma atualização encontrada.</div>'; return; }
   el.innerHTML = rows.map(r => {
     const up = r.quantidade_nova >= r.quantidade_anterior;
+    const isBaixa = isBaixaTipo(r.tipo);
     const time = new Date(r.created_at).toLocaleString('pt-BR');
     const thumb = r.produtos?.imagem_url
       ? `<img src="${r.produtos.imagem_url}" style="width:36px;height:36px;border-radius: 4px;object-fit:cover;border:1px solid var(--border);flex-shrink:0" onerror="this.style.display='none'">`
       : `<div style="width:36px;height:36px;border-radius: 4px;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">📦</div>`;
     const voltTag = r.voltagem ? `<span class="volt-tag" style="margin-left:6px">${r.voltagem}</span>` : '';
-    const tipoTag = r.tipo === 'baixa' ? `<span class="history-type-tag">Baixa</span>` : '';
-    const quemTexto = r.tipo === 'baixa' ? `vendido por ${r.vendedor || r.usuario || '—'}` : `por ${r.usuario || 'Funcionário'}`;
+    const tipoTag = isBaixa ? `<span class="history-type-tag">Baixa</span>` : '';
+    const quemTexto = isBaixa ? `vendido por ${r.vendedor || r.usuario || '—'}` : `por ${r.usuario || 'Funcionário'}`;
     return `<div class="history-item">
       ${thumb}
-      <div class="history-icon ${r.tipo === 'baixa' ? 'baixa' : (up ? 'up' : 'down')}">${r.tipo === 'baixa' ? '↓' : (up ? '▲' : '▼')}</div>
+      <div class="history-icon ${isBaixa ? 'baixa' : (up ? 'up' : 'down')}">${isBaixa ? '↓' : (up ? '▲' : '▼')}</div>
       <div class="history-body">
         <div class="history-product">${r.produtos?.nome || 'Produto'} ${voltTag} ${tipoTag}</div>
         <div class="history-detail">${r.quantidade_anterior} → ${r.quantidade_nova} &nbsp;·&nbsp; ${quemTexto}</div>

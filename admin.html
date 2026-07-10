@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Estoque - Administração</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<link rel="stylesheet" href="css/admin.css?v=20260710-csv-produtos">
+<link rel="stylesheet" href="css/admin.css?v=20260710-aplicar-csv">
 </head>
 <body>
 
@@ -168,6 +168,11 @@
       <div class="csv-preview-summary" id="csv-preview-summary">
         Nenhum arquivo selecionado.
       </div>
+      <div class="csv-preview-actions">
+        <button class="btn-save" id="csv-apply-btn" onclick="confirmCsvBaixa()" disabled>Aplicar baixa</button>
+        <button class="btn-cancel" onclick="clearCsvPreview()">Limpar CSV</button>
+        <span class="csv-apply-message" id="csv-apply-message"></span>
+      </div>
 
       <div class="table-wrap csv-preview-table-wrap" id="csv-preview-table-wrap" style="display:none">
         <table>
@@ -307,6 +312,6 @@
 <div class="toast-stack" id="toast-stack"></div>
 
 <script src="js/supabase-config.js"></script>
-<script src="js/admin.js?v=20260710-csv-produtos"></script>
+<script src="js/admin.js?v=20260710-aplicar-csv"></script>
 </body>
 </html>

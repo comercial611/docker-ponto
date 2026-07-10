@@ -15,6 +15,7 @@ Esta pasta documenta a configuracao de seguranca usada no Supabase de producao.
 9. `09-categoria-produtos.sql`
 10. `10-baixa-manual-produto-senha.sql`
 11. `11-listar-baixas-manuais-produto.sql`
+12. `12-aplicar-baixa-csv-produtos.sql`
 
 ## O que foi protegido
 
@@ -24,6 +25,7 @@ Esta pasta documenta a configuracao de seguranca usada no Supabase de producao.
 - Vendedor pode ler produtos, mas nao atualiza `produtos` diretamente.
 - Baixas de venda de maquinas passam pela funcao `public.registrar_baixa_venda`.
 - Baixa manual de produtos passa pela funcao `public.registrar_baixa_produto_manual`, com senha validada no Supabase.
+- Baixa por CSV de produtos passa pela funcao `public.registrar_baixa_csv_produtos`, restrita a admin.
 - Historico de movimentacao fica centralizado no Supabase.
 
 ## Arquivos
@@ -39,6 +41,7 @@ Esta pasta documenta a configuracao de seguranca usada no Supabase de producao.
 - `09-categoria-produtos.sql`: adiciona a categoria `maquina`/`produto` em produtos, mantendo os itens atuais como maquinas.
 - `10-baixa-manual-produto-senha.sql`: bloqueia baixa de produtos pela funcao comum e cria baixa manual de produtos com senha validada no Supabase.
 - `11-listar-baixas-manuais-produto.sql`: inclui baixas manuais de produtos na lista de baixas recentes do vendedor.
+- `12-aplicar-baixa-csv-produtos.sql`: cria a funcao segura que aplica baixas por CSV somente em produtos, ignorando maquinas no frontend e validando novamente no Supabase.
 - `rollback-policies-abertas.sql`: volta para as policies antigas em caso de emergencia.
 
 ## Atencao
