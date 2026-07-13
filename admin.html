@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Estoque - Administração</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<link rel="stylesheet" href="css/admin.css?v=20260710-relatorio-csv">
+<link rel="stylesheet" href="css/admin.css?v=20260713-relatorios-admin">
 </head>
 <body>
 
@@ -250,7 +250,28 @@
 
     <div class="section-header">
       <div class="section-title">Últimas atualizações de estoque</div>
-      <input class="search-input" id="search-historico" placeholder="Buscar produto ou vendedor..." oninput="renderHistory()">
+      <div class="filters-row">
+        <select class="filter-select" id="filter-historico-periodo" onchange="renderHistory()">
+          <option value="7">Últimos 7 dias</option>
+          <option value="30" selected>Últimos 30 dias</option>
+          <option value="90">Últimos 90 dias</option>
+          <option value="">Tudo carregado</option>
+        </select>
+        <select class="filter-select" id="filter-historico-tipo" onchange="renderHistory()">
+          <option value="">Todos os tipos</option>
+          <option value="entrada">Entradas / contagens</option>
+          <option value="baixa">Baixas</option>
+          <option value="csv">Baixas CSV</option>
+          <option value="manual">Baixas manuais</option>
+        </select>
+        <input class="search-input" id="search-historico" placeholder="Buscar produto ou vendedor..." oninput="renderHistory()">
+      </div>
+    </div>
+    <div class="history-summary-grid" id="history-summary-grid">
+      <div class="history-summary-card"><span>Movimentações</span><strong>—</strong></div>
+      <div class="history-summary-card"><span>Entradas</span><strong>—</strong></div>
+      <div class="history-summary-card"><span>Baixas</span><strong>—</strong></div>
+      <div class="history-summary-card"><span>Peças movimentadas</span><strong>—</strong></div>
     </div>
     <div class="history-list" id="history-list"><div class="empty-state">Carregando histórico...</div></div>
   </div>
@@ -318,6 +339,6 @@
 <div class="toast-stack" id="toast-stack"></div>
 
 <script src="js/supabase-config.js"></script>
-<script src="js/admin.js?v=20260710-relatorio-csv"></script>
+<script src="js/admin.js?v=20260713-relatorios-admin"></script>
 </body>
 </html>

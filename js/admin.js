@@ -1170,18 +1170,53 @@ function renderCsvLots() {
 }
 
 async function loadHistory() {
-  const { data } = await sb.from('historico').select('*, produtos(nome, imagem_url)').order('created_at', { ascending: false }).limit(50);
+  const { data } = await sb.from('historico').select('*, produtos(nome, imagem_url)').order('created_at', { ascending: false }).limit(200);
   historyRows = data || [];
   renderHistory();
 }
 
+function historyRowType(row) {
+  const tipo = String(row.tipo || '');
+  if (tipo === 'baixa_csv_produto') return 'csv';
+  if (tipo === 'baixa_manual_produto') return 'manual';
+  if (isBaixaTipo(tipo)) return 'baixa';
+  return 'entrada';
+}
+
+function historyRowDelta(row) {
+  return Math.abs((row.quantidade_nova || 0) - (row.quantidade_anterior || 0));
+}
+
+function updateHistorySummary(rows) {
+  const cards = document.querySelectorAll('#history-summary-grid .history-summary-card strong');
+  if (!cards.length) return;
+
+  const entradas = rows.filter(row => historyRowType(row) === 'entrada').reduce((sum, row) => sum + historyRowDelta(row), 0);
+  const baixas = rows.filter(row => historyRowType(row) !== 'entrada').reduce((sum, row) => sum + historyRowDelta(row), 0);
+  const totalPecas = rows.reduce((sum, row) => sum + historyRowDelta(row), 0);
+
+  cards[0].textContent = rows.length;
+  cards[1].textContent = entradas;
+  cards[2].textContent = baixas;
+  cards[3].textContent = totalPecas;
+}
+
 function renderHistory() {
   const q = (document.getElementById('search-historico')?.value || '').toLowerCase();
-  const rows = historyRows.filter(r =>
-    (r.produtos?.nome || '').toLowerCase().includes(q) ||
-    (r.usuario || '').toLowerCase().includes(q) ||
-    (r.vendedor || '').toLowerCase().includes(q)
-  );
+  const typeFilter = document.getElementById('filter-historico-tipo')?.value || '';
+  const periodValue = document.getElementById('filter-historico-periodo')?.value || '';
+  const since = periodValue ? new Date(Date.now() - Number(periodValue) * 24 * 60 * 60 * 1000) : null;
+  const rows = historyRows.filter(r => {
+    const matchesSearch =
+      (r.produtos?.nome || '').toLowerCase().includes(q) ||
+      (r.usuario || '').toLowerCase().includes(q) ||
+      (r.vendedor || '').toLowerCase().includes(q);
+    const rowType = historyRowType(r);
+    const matchesType = !typeFilter || rowType === typeFilter || (typeFilter === 'baixa' && rowType !== 'entrada');
+    const matchesPeriod = !since || new Date(r.created_at) >= since;
+    return matchesSearch && matchesType && matchesPeriod;
+  });
+  updateHistorySummary(rows);
   const el = document.getElementById('history-list');
   if (!rows.length) { el.innerHTML = '<div class="empty-state">Nenhuma atualização encontrada.</div>'; return; }
   el.innerHTML = rows.map(r => {

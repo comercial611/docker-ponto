@@ -171,6 +171,10 @@
   .success-msg { color: var(--green); font-size: 13px; margin-top: 10px; }
 
   .history-list { background: var(--surface); border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
+  .history-summary-grid { display: grid; grid-template-columns: repeat(4, minmax(140px, 1fr)); gap: 10px; margin-bottom: 16px; }
+  .history-summary-card { background: var(--surface); border: 1px solid var(--border); border-radius: 4px; padding: 12px 14px; }
+  .history-summary-card span { display: block; color: var(--muted); font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 6px; }
+  .history-summary-card strong { color: var(--text); font-size: 22px; }
   .history-item { padding: 14px 18px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 14px; font-size: 13px; }
   .history-item:last-child { border-bottom: none; }
   .history-time { color: var(--muted); font-size: 11px; white-space: nowrap; }
