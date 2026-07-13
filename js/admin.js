@@ -1201,12 +1201,12 @@ function updateHistorySummary(rows) {
   cards[3].textContent = totalPecas;
 }
 
-function renderHistory() {
+function getFilteredHistoryRows() {
   const q = (document.getElementById('search-historico')?.value || '').toLowerCase();
   const typeFilter = document.getElementById('filter-historico-tipo')?.value || '';
   const periodValue = document.getElementById('filter-historico-periodo')?.value || '';
   const since = periodValue ? new Date(Date.now() - Number(periodValue) * 24 * 60 * 60 * 1000) : null;
-  const rows = historyRows.filter(r => {
+  return historyRows.filter(r => {
     const matchesSearch =
       (r.produtos?.nome || '').toLowerCase().includes(q) ||
       (r.usuario || '').toLowerCase().includes(q) ||
@@ -1216,6 +1216,18 @@ function renderHistory() {
     const matchesPeriod = !since || new Date(r.created_at) >= since;
     return matchesSearch && matchesType && matchesPeriod;
   });
+}
+
+function historyTypeLabel(row) {
+  const type = historyRowType(row);
+  if (type === 'csv') return 'Baixa CSV';
+  if (type === 'manual') return 'Baixa manual';
+  if (type === 'baixa') return 'Baixa';
+  return 'Entrada / contagem';
+}
+
+function renderHistory() {
+  const rows = getFilteredHistoryRows();
   updateHistorySummary(rows);
   const el = document.getElementById('history-list');
   if (!rows.length) { el.innerHTML = '<div class="empty-state">Nenhuma atualização encontrada.</div>'; return; }
@@ -1239,6 +1251,55 @@ function renderHistory() {
       <div class="history-time">${time}</div>
     </div>`;
   }).join('');
+}
+
+function csvCell(value) {
+  const text = String(value ?? '');
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+function exportHistoryCsv() {
+  const rows = getFilteredHistoryRows();
+  if (!rows.length) {
+    alert('Nenhuma movimentacao para exportar com os filtros atuais.');
+    return;
+  }
+
+  const header = [
+    'Data',
+    'Produto',
+    'Tipo',
+    'Quantidade anterior',
+    'Quantidade nova',
+    'Diferenca',
+    'Usuario',
+    'Vendedor',
+    'Voltagem'
+  ];
+
+  const lines = rows.map(row => [
+    new Date(row.created_at).toLocaleString('pt-BR'),
+    row.produtos?.nome || 'Produto',
+    historyTypeLabel(row),
+    row.quantidade_anterior,
+    row.quantidade_nova,
+    historyRowDelta(row),
+    row.usuario || '',
+    row.vendedor || '',
+    row.voltagem || ''
+  ].map(csvCell).join(';'));
+
+  const csv = '\uFEFF' + [header.map(csvCell).join(';'), ...lines].join('\r\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const stamp = new Date().toISOString().slice(0, 10);
+  a.href = url;
+  a.download = `historico-estoque-${stamp}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
 
 // ─── REALTIME ────────────────────────────────────────────

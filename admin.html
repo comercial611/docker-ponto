@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Estoque - Administração</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<link rel="stylesheet" href="css/admin.css?v=20260713-relatorios-admin">
+<link rel="stylesheet" href="css/admin.css?v=20260713-exportar-historico">
 </head>
 <body>
 
@@ -265,6 +265,7 @@
           <option value="manual">Baixas manuais</option>
         </select>
         <input class="search-input" id="search-historico" placeholder="Buscar produto ou vendedor..." oninput="renderHistory()">
+        <button class="btn-cancel" onclick="exportHistoryCsv()">Exportar CSV</button>
       </div>
     </div>
     <div class="history-summary-grid" id="history-summary-grid">
@@ -339,6 +340,6 @@
 <div class="toast-stack" id="toast-stack"></div>
 
 <script src="js/supabase-config.js"></script>
-<script src="js/admin.js?v=20260713-relatorios-admin"></script>
+<script src="js/admin.js?v=20260713-exportar-historico"></script>
 </body>
 </html>
