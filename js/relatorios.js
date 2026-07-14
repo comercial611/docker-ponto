@@ -5,10 +5,7 @@ let attentionLists = {};
 
 async function checkSession() {
   const { data: { session } } = await sb.auth.getSession();
-  if (session) {
-    showApp();
-    await loadData();
-  }
+  if (session) await enterReportsArea();
 }
 
 sb.auth.onAuthStateChange((event) => {
@@ -29,12 +26,24 @@ async function doLogin() {
     return;
   }
 
-  showApp();
-  await loadData();
+  await enterReportsArea();
 }
 
 async function doLogout() {
   await sb.auth.signOut();
+}
+
+async function enterReportsArea() {
+  const { data: tipo, error } = await sb.rpc('usuario_tipo');
+  if (error || tipo !== 'admin') {
+    await sb.auth.signOut();
+    document.getElementById('login-error').textContent = 'Acesso permitido apenas para administradores.';
+    return false;
+  }
+
+  showApp();
+  await loadData();
+  return true;
 }
 
 function showApp() {
