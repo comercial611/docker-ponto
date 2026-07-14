@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Relatorio Final - Compras</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link rel="stylesheet" href="css/relatorios.css?v=20260714-fotos-relatorio">
+</head>
+<body>
+
+<div id="login-screen">
+  <div class="login-box">
+    <div class="login-logo">Ponto da Sublimacao</div>
+    <div class="login-title">Relatorio Final</div>
+    <div class="login-sub">Visao de compras e acompanhamento de estoque</div>
+    <div class="field"><label>E-mail</label><input type="email" id="login-email" placeholder="admin@exemplo.com"></div>
+    <div class="field"><label>Senha</label><input type="password" id="login-pass" placeholder="********"></div>
+    <button class="btn-primary" onclick="doLogin()">Entrar</button>
+    <div class="error-msg" id="login-error"></div>
+  </div>
+</div>
+
+<div id="app-screen">
+  <header>
+    <div class="header-left">
+      <div>
+        <div class="header-logo">Relatorio Final</div>
+        <div class="header-sub">Compras e saude do estoque</div>
+      </div>
+      <div class="readonly-badge">Somente leitura</div>
+    </div>
+    <div class="header-right">
+      <button class="btn-ghost" onclick="loadData()">Atualizar</button>
+      <a class="btn-ghost" href="admin.html">Admin</a>
+      <button class="btn-logout" onclick="doLogout()">Sair</button>
+    </div>
+  </header>
+
+  <main>
+    <nav class="report-tabs" aria-label="Tipo de relatorio">
+      <button class="report-tab active" id="report-tab-produtos" onclick="switchReportTab('produtos')">Produtos</button>
+      <button class="report-tab" id="report-tab-maquinas" onclick="switchReportTab('maquinas')">Maquinas / Prensas</button>
+    </nav>
+
+    <div class="report-tab-panel active" id="report-panel-produtos">
+    <section class="summary-grid">
+      <div class="stat-card">
+        <div class="stat-label">Produtos comuns</div>
+        <div class="stat-value" id="stat-produtos">-</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Maquinas / Prensas</div>
+        <div class="stat-value" id="stat-maquinas">-</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Abaixo do minimo</div>
+        <div class="stat-value yellow" id="stat-baixo">-</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Sem estoque</div>
+        <div class="stat-value red" id="stat-zerado">-</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Baixado por CSV</div>
+        <div class="stat-value blue" id="stat-csv">-</div>
+      </div>
+    </section>
+
+    <section class="report-section">
+      <div class="section-header">
+        <div>
+          <h2>Sugestao de compra</h2>
+          <p>Produtos comuns com estoque zerado ou abaixo do minimo cadastrado.</p>
+        </div>
+        <span class="section-count" id="purchase-count">0 itens</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Produto</th>
+              <th>Codigos</th>
+              <th>Atual</th>
+              <th>Minimo</th>
+              <th>Sugerido</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="purchase-tbody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="report-grid">
+      <div class="report-section">
+        <div class="section-header">
+          <div>
+            <h2>Produtos mais baixados</h2>
+            <p>Baseado nas baixas por CSV e no historico carregado.</p>
+          </div>
+          <span class="section-count">Top 10</span>
+        </div>
+        <div class="bar-list" id="top-products-list"></div>
+      </div>
+
+      <div class="report-section">
+        <div class="section-header">
+          <div>
+            <h2>Ultimas importacoes CSV</h2>
+            <p>Resumo dos lotes aplicados no estoque.</p>
+          </div>
+        </div>
+        <div class="csv-list" id="csv-lots-list"></div>
+      </div>
+    </section>
+
+    <section class="report-section">
+      <div class="section-header">
+        <div>
+          <h2>Pontos de atencao</h2>
+          <p>Itens que merecem revisao antes da proxima compra.</p>
+        </div>
+      </div>
+      <div class="attention-grid" id="attention-grid"></div>
+    </section>
+    </div>
+
+    <div class="report-tab-panel" id="report-panel-maquinas">
+      <section class="summary-grid">
+        <div class="stat-card">
+          <div class="stat-label">Maquinas / Prensas</div>
+          <div class="stat-value" id="machine-stat-total">-</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Unidades em estoque</div>
+          <div class="stat-value blue" id="machine-stat-units">-</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Abaixo do minimo</div>
+          <div class="stat-value yellow" id="machine-stat-low">-</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Sem estoque</div>
+          <div class="stat-value red" id="machine-stat-out">-</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Baixas registradas</div>
+          <div class="stat-value green" id="machine-stat-sales">-</div>
+        </div>
+      </section>
+
+      <section class="report-section">
+        <div class="section-header">
+          <div>
+            <h2>Sugestao de reposicao de maquinas</h2>
+            <p>Maquinas e prensas com estoque zerado ou abaixo do minimo cadastrado.</p>
+          </div>
+          <span class="section-count" id="machine-purchase-count">0 itens</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Maquina / Prensa</th>
+                <th>Codigos</th>
+                <th>110V</th>
+                <th>220V</th>
+                <th>Total</th>
+                <th>Minimo</th>
+                <th>Sugerido</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="machine-purchase-tbody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="report-grid">
+        <div class="report-section">
+          <div class="section-header">
+            <div>
+              <h2>Maquinas mais vendidas</h2>
+              <p>Baseado nas baixas manuais registradas pelos vendedores.</p>
+            </div>
+            <span class="section-count">Top 10</span>
+          </div>
+          <div class="bar-list" id="top-machines-list"></div>
+        </div>
+
+        <div class="report-section">
+          <div class="section-header">
+            <div>
+              <h2>Ultimas baixas</h2>
+              <p>Movimentacoes recentes de maquinas e prensas.</p>
+            </div>
+          </div>
+          <div class="sales-list" id="machine-sales-list"></div>
+        </div>
+      </section>
+
+      <section class="report-section">
+        <div class="section-header">
+          <div>
+            <h2>Pontos de atencao das maquinas</h2>
+            <p>Resumo para acompanhar reposicao e qualidade dos cadastros.</p>
+          </div>
+        </div>
+        <div class="attention-grid" id="machine-attention-grid"></div>
+      </section>
+    </div>
+  </main>
+</div>
+
+<div class="modal-overlay" id="attention-modal" onclick="closeAttentionModalOnOverlay(event)">
+  <div class="attention-modal" role="dialog" aria-modal="true" aria-labelledby="attention-modal-title">
+    <div class="modal-header">
+      <div>
+        <h2 id="attention-modal-title">Produtos</h2>
+        <p id="attention-modal-subtitle">0 itens encontrados</p>
+      </div>
+      <button class="modal-close" type="button" onclick="closeAttentionModal()" aria-label="Fechar">&times;</button>
+    </div>
+    <div class="modal-product-list" id="attention-modal-list"></div>
+  </div>
+</div>
+
+<script src="js/supabase-config.js"></script>
+<script src="js/relatorios.js?v=20260714-fotos-relatorio"></script>
+</body>
+</html>
