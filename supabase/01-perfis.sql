@@ -10,7 +10,7 @@ alter table public.perfis enable row level security;
 insert into public.perfis (user_id, tipo, nome)
 values
   ('8c865d03-955d-4dd5-8d4f-69287b8d3c4f', 'admin', 'Comercial'),
-  ('ea08e6bf-24fa-448e-a34d-b5b999c06c71', 'funcionario', 'Estoque'),
+  ('ea08e6bf-24fa-448e-a34d-b5b999c06c71', 'admin', 'Estoque'),
 
   ('966f26df-28ce-4c36-8665-417e767cbf62', 'vendedor', 'Ailton'),
   ('2823f9b6-77e4-4a53-889b-6e197cbcda2e', 'vendedor', 'Alex'),

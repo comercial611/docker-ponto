@@ -190,7 +190,7 @@ function pushHistoryNotification(record) {
 
 async function checkSession() {
   const { data: { session } } = await sb.auth.getSession();
-  if (session) { showApp(); init(); }
+  if (session) await enterAdminArea();
 }
 sb.auth.onAuthStateChange((event) => {
   if (event === 'SIGNED_OUT') {
@@ -204,9 +204,23 @@ async function doLogin() {
   document.getElementById('login-error').textContent = '';
   const { error } = await sb.auth.signInWithPassword({ email, password: pass });
   if (error) { document.getElementById('login-error').textContent = 'E-mail ou senha incorretos.'; return; }
-  showApp(); init();
+  await enterAdminArea();
 }
 async function doLogout() { await sb.auth.signOut(); }
+
+async function enterAdminArea() {
+  const { data: tipo, error } = await sb.rpc('usuario_tipo');
+  if (error || tipo !== 'admin') {
+    await sb.auth.signOut();
+    document.getElementById('login-error').textContent = 'Acesso permitido apenas para administradores.';
+    return false;
+  }
+
+  showApp();
+  await init();
+  return true;
+}
+
 function showApp() {
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('app-screen').style.display = 'block';
