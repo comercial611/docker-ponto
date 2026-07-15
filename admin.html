@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Estoque - Administração</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<link rel="stylesheet" href="css/admin.css?v=20260713-exportar-historico">
+<link rel="stylesheet" href="css/admin.css?v=20260715-codigos-voltagem">
 </head>
 <body>
 
@@ -51,6 +51,7 @@
   <div class="tabs">
     <button class="tab active" onclick="switchTab('dashboard')">Dashboard</button>
     <button class="tab" onclick="switchTab('produtos')">Produtos</button>
+    <button class="tab" onclick="switchTab('nuvemshop')">Nuvemshop</button>
     <button class="tab" onclick="switchTab('vendedores')">Vendedores</button>
     <button class="tab" onclick="switchTab('historico')">Histórico</button>
   </div>
@@ -94,11 +95,13 @@
       <div class="form-section-label">Identificação</div>
       <div class="form-field"><label>Nome do produto *</label><input type="text" id="p-nome" placeholder="Ex: Prensa de Caneca"></div>
       <div class="form-field"><label>Categoria</label><select id="p-categoria"><option value="maquina">Máquina / Prensa</option><option value="produto">Produto</option></select></div>
-      <div class="codes-grid">
-        <div class="form-field"><label>Código do Fabricante</label><input type="text" id="p-cod-fab" placeholder="FAB-1234"></div>
-        <div class="form-field"><label>Código interno</label><input type="text" id="p-cod-interno" placeholder="0042"></div>
-        <div class="form-field"><label>Código de referência</label><input type="text" id="p-cod-ref" placeholder="REF-7891"></div>
-        <div class="form-field"><label>Código de barras</label><input type="text" id="p-cod-barras" placeholder="7890000000000"></div>
+      <div id="codes-simple-wrap" class="visible">
+        <div class="codes-grid">
+          <div class="form-field"><label>Código do Fabricante</label><input type="text" id="p-cod-fab" placeholder="FAB-1234"></div>
+          <div class="form-field"><label>Código interno</label><input type="text" id="p-cod-interno" placeholder="0042"></div>
+          <div class="form-field"><label>Código de referência</label><input type="text" id="p-cod-ref" placeholder="REF-7891"></div>
+          <div class="form-field"><label>Código de barras</label><input type="text" id="p-cod-barras" placeholder="7890000000000"></div>
+        </div>
       </div>
 
       <div class="form-section-label">Estoque</div>
@@ -106,6 +109,26 @@
       <div class="checkbox-row" onclick="document.getElementById('p-tem-voltagem').click()">
         <input type="checkbox" id="p-tem-voltagem" onclick="toggleVoltagem(event)">
         <label for="p-tem-voltagem" onclick="event.stopPropagation()">Este produto tem voltagem (110V / 220V)</label>
+      </div>
+
+      <div id="codes-voltage-wrap">
+        <div class="form-section-label">Códigos por voltagem</div>
+        <div class="voltage-codes-grid">
+          <div class="voltage-code-card">
+            <div class="volt-col-header"><span class="volt-badge-110">110V</span></div>
+            <div class="form-field"><label>Código do fabricante</label><input type="text" id="p-cod-fab-110" placeholder="Ex: A101"></div>
+            <div class="form-field"><label>Código interno</label><input type="text" id="p-cod-interno-110" placeholder="Ex: 24401"></div>
+            <div class="form-field"><label>Código de referência</label><input type="text" id="p-cod-ref-110" placeholder="Ex: 15266"></div>
+            <div class="form-field"><label>Código de barras</label><input type="text" id="p-cod-barras-110" placeholder="Código de barras 110V"></div>
+          </div>
+          <div class="voltage-code-card">
+            <div class="volt-col-header"><span class="volt-badge-220">220V</span></div>
+            <div class="form-field"><label>Código do fabricante</label><input type="text" id="p-cod-fab-220" placeholder="Ex: A102"></div>
+            <div class="form-field"><label>Código interno</label><input type="text" id="p-cod-interno-220" placeholder="Ex: 24501"></div>
+            <div class="form-field"><label>Código de referência</label><input type="text" id="p-cod-ref-220" placeholder="Ex: 15267"></div>
+            <div class="form-field"><label>Código de barras</label><input type="text" id="p-cod-barras-220" placeholder="Código de barras 220V"></div>
+          </div>
+        </div>
       </div>
 
       <div class="qty-block">
@@ -160,10 +183,16 @@
           <div class="section-title">Previa de baixa por CSV</div>
           <p class="csv-preview-sub">Importe o relatorio do PDV para conferir as baixas de produtos antes de gravar qualquer alteracao.</p>
         </div>
-        <label class="csv-upload-btn">
-          Selecionar CSV
-          <input type="file" id="csv-baixa-input" accept=".csv,text/csv" onchange="handleCsvPreview(event)">
-        </label>
+        <div class="csv-preview-controls">
+          <label class="csv-movement-date">
+            <span>Data do movimento</span>
+            <input type="date" id="csv-movement-date" onchange="updateCsvApplyState()">
+          </label>
+          <label class="csv-upload-btn">
+            Selecionar CSV
+            <input type="file" id="csv-baixa-input" accept=".csv,text/csv" onchange="handleCsvPreview(event)">
+          </label>
+        </div>
       </div>
 
       <div class="csv-preview-summary" id="csv-preview-summary">
@@ -195,6 +224,45 @@
           <tbody id="prod-tbody"></tbody>
         </table>
       </div>
+    </div>
+  </div>
+
+  <!-- NUVEMSHOP -->
+  <div class="tab-content" id="tab-nuvemshop">
+    <div class="section-header nuvemshop-heading">
+      <div>
+        <div class="section-title">Conferencia Nuvemshop</div>
+        <div class="nuvemshop-connection"><span></span> Conexao somente leitura</div>
+      </div>
+      <button class="btn-save" id="nuvemshop-refresh-btn" onclick="loadNuvemshopCatalog(true)">Atualizar catalogo</button>
+    </div>
+
+    <div class="stats-grid nuvemshop-stats">
+      <div class="stat-card"><div class="stat-label">Produtos locais</div><div class="stat-value" id="nuvemshop-stat-local">-</div></div>
+      <div class="stat-card"><div class="stat-label">Variantes Nuvemshop</div><div class="stat-value" id="nuvemshop-stat-remote">-</div></div>
+      <div class="stat-card"><div class="stat-label">Identificados</div><div class="stat-value green" id="nuvemshop-stat-matched">-</div></div>
+      <div class="stat-card"><div class="stat-label">Precisam de revisao</div><div class="stat-value yellow" id="nuvemshop-stat-review">-</div></div>
+    </div>
+
+    <div class="section-header">
+      <div class="section-title" id="nuvemshop-list-title">Catalogo externo</div>
+      <div class="filters-row">
+        <select class="filter-select" id="nuvemshop-filter-status" onchange="renderNuvemshopCatalog()">
+          <option value="">Todos os status</option>
+          <option value="linked">Vinculados</option>
+          <option value="matched">Correspondencia exata</option>
+          <option value="ambiguous">Revisar correspondencia</option>
+          <option value="unmatched">Nao identificados</option>
+        </select>
+        <input class="search-input" id="nuvemshop-search" placeholder="Buscar no catalogo..." oninput="renderNuvemshopCatalog()">
+      </div>
+    </div>
+    <div class="nuvemshop-message" id="nuvemshop-message">Abra esta aba para consultar o catalogo.</div>
+    <div class="table-wrap" id="nuvemshop-table-wrap" style="display:none">
+      <table>
+        <thead><tr><th>Status</th><th>Produto Nuvemshop</th><th>Variante</th><th>Codigos</th><th>Estoque Nuvemshop</th><th>Possivel produto local</th><th>Estoque local</th></tr></thead>
+        <tbody id="nuvemshop-tbody"></tbody>
+      </table>
     </div>
   </div>
 
@@ -341,6 +409,6 @@
 <div class="toast-stack" id="toast-stack"></div>
 
 <script src="js/supabase-config.js"></script>
-<script src="js/admin.js?v=20260714-dois-administradores"></script>
+<script src="js/admin.js?v=20260715-codigos-voltagem"></script>
 </body>
 </html>

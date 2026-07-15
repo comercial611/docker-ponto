@@ -8,3 +8,4 @@ Thumbs.db
 *.bak
 *.bak-*
 *.old
+supabase/.temp/

@@ -18,6 +18,10 @@ Esta pasta documenta a configuracao de seguranca usada no Supabase de producao.
 12. `12-aplicar-baixa-csv-produtos.sql`
 13. `13-relatorio-baixas-csv.sql`
 14. `14-segundo-admin-principal.sql`
+15. `15-proteger-fechamento-csv.sql`
+16. `16-base-vinculos-nuvemshop.sql`
+17. `17-conexao-nuvemshop-segura.sql`
+18. `18-codigos-por-voltagem.sql`
 
 ## O que foi protegido
 
@@ -47,6 +51,13 @@ Esta pasta documenta a configuracao de seguranca usada no Supabase de producao.
 - `12-aplicar-baixa-csv-produtos.sql`: cria a funcao segura que aplica baixas por CSV somente em produtos, ignorando maquinas no frontend e validando novamente no Supabase.
 - `13-relatorio-baixas-csv.sql`: cria o relatorio de importacoes CSV e atualiza a funcao de baixa para registrar lote e itens aplicados.
 - `14-segundo-admin-principal.sql`: promove o login vendas4 a administrador depois de validar UUID e e-mail no Supabase Auth.
+- `15-proteger-fechamento-csv.sql`: adiciona data e identificacao unica ao fechamento CSV, impedindo a reaplicacao acidental do mesmo arquivo na mesma data.
+- `16-base-vinculos-nuvemshop.sql`: cria os vinculos protegidos entre produtos locais e produtos ou variantes da Nuvemshop, sem consultar ou alterar estoque externo.
+- `17-conexao-nuvemshop-segura.sql`: cria a tabela sem acesso pelo navegador usada para guardar o token criptografado da Nuvemshop.
+- `18-codigos-por-voltagem.sql`: adiciona campos separados de fabricante, interno, referencia e barras para as variacoes 110V e 220V, preservando os campos antigos.
+- `functions/nuvemshop-oauth`: conclui a instalacao OAuth e salva o token criptografado, sem exibir a credencial.
+- `functions/nuvemshop-lgpd`: recebe os tres webhooks obrigatorios de privacidade e valida a assinatura da Nuvemshop.
+- `functions/nuvemshop-catalogo`: consulta o catalogo da Nuvemshop somente para administradores e sem alterar estoque.
 - `rollback-segundo-admin-principal.sql`: devolve o login vendas4 ao perfil funcionario em caso de necessidade.
 - `rollback-policies-abertas.sql`: volta para as policies antigas em caso de emergencia.
 

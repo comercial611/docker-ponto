@@ -5,7 +5,11 @@ let deleteVendedorId = null;
 let csvPreviewRows = [];
 let csvPreviewApplied = false;
 let csvPreviewFileName = null;
+let csvPreviewHash = null;
 let csvLots = [];
+let nuvemshopCatalogRows = [];
+let nuvemshopCatalogLoaded = false;
+let nuvemshopStoreId = null;
 
 // Estado do painel de baixa
 let baixaProduto = null;
@@ -228,6 +232,7 @@ function showApp() {
 
 async function init() {
   loadSavedNotifications();
+  setDefaultCsvMovementDate();
   await loadProducts();
   await loadVendedores();
   await loadHistory();
@@ -375,8 +380,28 @@ function updateStats() {
 
 function toggleVoltagem(e) {
   const checked = e.target.checked;
+  document.getElementById('codes-simple-wrap').classList.toggle('visible', !checked);
+  document.getElementById('codes-voltage-wrap').classList.toggle('visible', checked);
   document.getElementById('qty-simple-wrap').classList.toggle('visible', !checked);
   document.getElementById('qty-voltage-wrap').classList.toggle('visible', checked);
+}
+
+function inputText(id) {
+  return document.getElementById(id).value.trim();
+}
+
+function formatVoltageCodes(code110, code220) {
+  return [
+    code110 ? `${code110} (110V)` : '',
+    code220 ? `${code220} (220V)` : ''
+  ].filter(Boolean).join(' - ') || null;
+}
+
+function extractVoltageCode(value, voltage) {
+  const text = String(value || '');
+  const beforeMarker = new RegExp(`([a-z0-9][a-z0-9./-]*)\\s*\\(\\s*${voltage}\\s*v?\\s*\\)`, 'i');
+  const afterMarker = new RegExp(`${voltage}\\s*v?\\s*[:=-]?\\s*([a-z0-9][a-z0-9./-]*)`, 'i');
+  return text.match(beforeMarker)?.[1] || text.match(afterMarker)?.[1] || '';
 }
 
 function previewImg() {
@@ -392,24 +417,61 @@ async function saveProduct() {
   if (!nome) { alert('Nome do produto é obrigatório.'); return; }
   const temVoltagem = document.getElementById('p-tem-voltagem').checked;
 
+  const legacyCodes = {
+    fabricante: inputText('p-cod-fab'),
+    interno: inputText('p-cod-interno'),
+    referencia: inputText('p-cod-ref'),
+    barras: inputText('p-cod-barras')
+  };
+  const voltageCodes = {
+    fabricante110: inputText('p-cod-fab-110'),
+    fabricante220: inputText('p-cod-fab-220'),
+    interno110: inputText('p-cod-interno-110'),
+    interno220: inputText('p-cod-interno-220'),
+    referencia110: inputText('p-cod-ref-110'),
+    referencia220: inputText('p-cod-ref-220'),
+    barras110: inputText('p-cod-barras-110'),
+    barras220: inputText('p-cod-barras-220')
+  };
+
   const body = {
     nome,
     categoria: document.getElementById('p-categoria').value || 'maquina',
-    codigo_fabricante: document.getElementById('p-cod-fab').value.trim() || null,
-    codigo_interno: document.getElementById('p-cod-interno').value.trim() || null,
-    codigo_referencia: document.getElementById('p-cod-ref').value.trim() || null,
-    sku: document.getElementById('p-cod-barras').value.trim() || null,
     tem_voltagem: temVoltagem,
     observacoes: document.getElementById('p-obs').value.trim() || null,
     imagem_url: document.getElementById('p-img-url').value.trim() || null
   };
 
   if (temVoltagem) {
+    body.codigo_fabricante_110v = voltageCodes.fabricante110 || null;
+    body.codigo_fabricante_220v = voltageCodes.fabricante220 || null;
+    body.codigo_interno_110v = voltageCodes.interno110 || null;
+    body.codigo_interno_220v = voltageCodes.interno220 || null;
+    body.codigo_referencia_110v = voltageCodes.referencia110 || null;
+    body.codigo_referencia_220v = voltageCodes.referencia220 || null;
+    body.codigo_barras_110v = voltageCodes.barras110 || null;
+    body.codigo_barras_220v = voltageCodes.barras220 || null;
+    body.codigo_fabricante = formatVoltageCodes(voltageCodes.fabricante110, voltageCodes.fabricante220) || legacyCodes.fabricante || null;
+    body.codigo_interno = formatVoltageCodes(voltageCodes.interno110, voltageCodes.interno220) || legacyCodes.interno || null;
+    body.codigo_referencia = formatVoltageCodes(voltageCodes.referencia110, voltageCodes.referencia220) || legacyCodes.referencia || null;
+    body.sku = formatVoltageCodes(voltageCodes.barras110, voltageCodes.barras220) || legacyCodes.barras || null;
     body.quantidade_110v = parseInt(document.getElementById('p-qty-110').value) || 0;
     body.quantidade_220v = parseInt(document.getElementById('p-qty-220').value) || 0;
     body.quantidade = 0;
     body.minimo = parseInt(document.getElementById('p-min-volt').value) || 0;
   } else {
+    body.codigo_fabricante = legacyCodes.fabricante || null;
+    body.codigo_interno = legacyCodes.interno || null;
+    body.codigo_referencia = legacyCodes.referencia || null;
+    body.sku = legacyCodes.barras || null;
+    body.codigo_fabricante_110v = null;
+    body.codigo_fabricante_220v = null;
+    body.codigo_interno_110v = null;
+    body.codigo_interno_220v = null;
+    body.codigo_referencia_110v = null;
+    body.codigo_referencia_220v = null;
+    body.codigo_barras_110v = null;
+    body.codigo_barras_220v = null;
     body.quantidade = parseInt(document.getElementById('p-qty').value) || 0;
     body.minimo = parseInt(document.getElementById('p-min').value) || 0;
     body.quantidade_110v = 0;
@@ -417,8 +479,14 @@ async function saveProduct() {
   }
 
   const editId = document.getElementById('p-edit-id').value;
-  if (editId) { await sb.from('produtos').update(body).eq('id', editId); }
-  else { await sb.from('produtos').insert(body); }
+  const { error } = editId
+    ? await sb.from('produtos').update(body).eq('id', editId)
+    : await sb.from('produtos').insert(body);
+  if (error) {
+    console.error('Falha ao salvar produto', error);
+    alert(`Não foi possível salvar o produto: ${error.message}`);
+    return;
+  }
   clearForm();
   showSuccess('Produto salvo com sucesso!');
   await loadProducts();
@@ -441,6 +509,14 @@ function editProduct(id) {
   toggleVoltagem({ target: cb });
 
   if (p.tem_voltagem) {
+    document.getElementById('p-cod-fab-110').value = p.codigo_fabricante_110v || extractVoltageCode(p.codigo_fabricante, '110');
+    document.getElementById('p-cod-fab-220').value = p.codigo_fabricante_220v || extractVoltageCode(p.codigo_fabricante, '220');
+    document.getElementById('p-cod-interno-110').value = p.codigo_interno_110v || extractVoltageCode(p.codigo_interno, '110');
+    document.getElementById('p-cod-interno-220').value = p.codigo_interno_220v || extractVoltageCode(p.codigo_interno, '220');
+    document.getElementById('p-cod-ref-110').value = p.codigo_referencia_110v || extractVoltageCode(p.codigo_referencia, '110');
+    document.getElementById('p-cod-ref-220').value = p.codigo_referencia_220v || extractVoltageCode(p.codigo_referencia, '220');
+    document.getElementById('p-cod-barras-110').value = p.codigo_barras_110v || extractVoltageCode(p.sku, '110');
+    document.getElementById('p-cod-barras-220').value = p.codigo_barras_220v || extractVoltageCode(p.sku, '220');
     document.getElementById('p-qty-110').value = p.quantidade_110v || 0;
     document.getElementById('p-qty-220').value = p.quantidade_220v || 0;
     document.getElementById('p-min-volt').value = p.minimo || 0;
@@ -459,7 +535,11 @@ function editProduct(id) {
 
 function cancelEdit() { clearForm(); }
 function clearForm() {
-  ['p-nome','p-cod-fab','p-cod-interno','p-cod-ref','p-cod-barras','p-qty','p-min','p-qty-110','p-qty-220','p-min-volt','p-obs','p-img-url','p-edit-id'].forEach(id => document.getElementById(id).value = '');
+  ['p-nome','p-cod-fab','p-cod-interno','p-cod-ref','p-cod-barras',
+    'p-cod-fab-110','p-cod-fab-220','p-cod-interno-110','p-cod-interno-220',
+    'p-cod-ref-110','p-cod-ref-220','p-cod-barras-110','p-cod-barras-220',
+    'p-qty','p-min','p-qty-110','p-qty-220','p-min-volt','p-obs','p-img-url','p-edit-id'
+  ].forEach(id => document.getElementById(id).value = '');
   document.getElementById('p-categoria').value = 'maquina';
   const cb = document.getElementById('p-tem-voltagem');
   cb.checked = false;
@@ -505,6 +585,264 @@ function normalizeHeader(value) {
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .replace(/[^a-z0-9]/g, '');
+}
+
+// NUVEMSHOP - CONFERENCIA SOMENTE LEITURA
+function translatedValue(value) {
+  if (value == null) return '';
+  if (typeof value !== 'object') return String(value);
+  return String(value.pt || value['pt-BR'] || value.es || value.en || Object.values(value)[0] || '');
+}
+
+function remoteVariantLabel(variant) {
+  const values = Array.isArray(variant?.values) ? variant.values.map(translatedValue).filter(Boolean) : [];
+  return values.length ? values.join(' / ') : 'Unica';
+}
+
+function remoteVariantStock(variant) {
+  if (variant?.stock_management === false) return null;
+  if (Number.isFinite(Number(variant?.stock))) return Number(variant.stock);
+  if (Array.isArray(variant?.inventory_levels)) {
+    return variant.inventory_levels.reduce((total, level) => total + (Number(level?.stock) || 0), 0);
+  }
+  return 0;
+}
+
+function codeTokens(value) {
+  const normalized = normalizeCode(value);
+  if (!normalized) return [];
+
+  const voltageMarkers = new Set(['110', '220', '110v', '220v', 'v110', 'v220']);
+  return [...new Set((normalized.match(/[a-z0-9]+(?:[-./][a-z0-9]+)*/g) || [])
+    .filter(token => !voltageMarkers.has(token)))];
+}
+
+function localProductCodes(product) {
+  return [
+    product.codigo_fabricante, product.codigo_interno, product.codigo_referencia, product.sku,
+    product.codigo_fabricante_110v, product.codigo_fabricante_220v,
+    product.codigo_interno_110v, product.codigo_interno_220v,
+    product.codigo_referencia_110v, product.codigo_referencia_220v,
+    product.codigo_barras_110v, product.codigo_barras_220v
+  ]
+    .flatMap(codeTokens);
+}
+
+function findExactLocalCandidates(variant) {
+  const remoteCodes = [variant?.sku, variant?.barcode].flatMap(codeTokens);
+  if (!remoteCodes.length) return [];
+  return products.filter(product => localProductCodes(product).some(code => remoteCodes.includes(code)));
+}
+
+function inferVoltage(value) {
+  const normalized = String(value || '').toUpperCase();
+  if (/(^|\D)110\s*V?(\D|$)/.test(normalized)) return '110V';
+  if (/(^|\D)220\s*V?(\D|$)/.test(normalized)) return '220V';
+  return null;
+}
+
+function mappedLocalStock(product, voltage) {
+  if (!product) return null;
+  if (!product.tem_voltagem) return Number(product.quantidade) || 0;
+  if (voltage === '110V') return Number(product.quantidade_110v) || 0;
+  if (voltage === '220V') return Number(product.quantidade_220v) || 0;
+  return (Number(product.quantidade_110v) || 0) + (Number(product.quantidade_220v) || 0);
+}
+
+function flattenNuvemshopCatalog(remoteProducts, links) {
+  const rows = [];
+  remoteProducts.forEach(remoteProduct => {
+    const variants = Array.isArray(remoteProduct.variants) && remoteProduct.variants.length
+      ? remoteProduct.variants
+      : [{ id: null, product_id: remoteProduct.id, sku: remoteProduct.sku, barcode: remoteProduct.barcode, stock: remoteProduct.stock, stock_management: remoteProduct.stock_management, values: [] }];
+
+    variants.forEach(variant => {
+      const productId = Number(remoteProduct.id);
+      const variantId = variant.id == null ? null : Number(variant.id);
+      const savedLink = links.find(link => {
+        if (Number(link.nuvemshop_produto_id) !== productId) return false;
+        if (link.nuvemshop_variante_id != null) {
+          return Number(link.nuvemshop_variante_id) === variantId;
+        }
+        return variants.length === 1;
+      });
+      const linkedProduct = savedLink ? products.find(product => product.id === savedLink.produto_id) : null;
+      const candidates = savedLink ? [] : findExactLocalCandidates(variant);
+      const localProduct = linkedProduct || (candidates.length === 1 ? candidates[0] : null);
+      const status = linkedProduct ? 'linked' : candidates.length === 1 ? 'matched' : candidates.length > 1 ? 'ambiguous' : 'unmatched';
+      const variantLabel = remoteVariantLabel(variant);
+      const remoteName = translatedValue(remoteProduct.name) || `Produto ${productId}`;
+      const inferredVoltage = inferVoltage(variantLabel) || inferVoltage(remoteName);
+      const localVoltage = localProduct?.tem_voltagem ? (savedLink?.voltagem || inferredVoltage) : null;
+      const image = Array.isArray(remoteProduct.images) ? remoteProduct.images[0]?.src : null;
+
+      rows.push({
+        status,
+        productId,
+        variantId,
+        remoteName,
+        variantLabel,
+        sku: variant.sku || '',
+        barcode: variant.barcode || '',
+        remoteStock: remoteVariantStock(variant),
+        image,
+        localProduct,
+        candidates,
+        localStock: mappedLocalStock(localProduct, localVoltage),
+        linkVoltage: localVoltage
+      });
+    });
+  });
+  return rows;
+}
+
+async function loadNuvemshopCatalog(force = false) {
+  if (nuvemshopCatalogLoaded && !force) return;
+  const button = document.getElementById('nuvemshop-refresh-btn');
+  const message = document.getElementById('nuvemshop-message');
+  const tableWrap = document.getElementById('nuvemshop-table-wrap');
+  button.disabled = true;
+  button.textContent = 'Consultando...';
+  message.className = 'nuvemshop-message';
+  message.textContent = 'Consultando catalogo da Nuvemshop...';
+  message.style.display = 'flex';
+  tableWrap.style.display = 'none';
+
+  try {
+    const [{ data, error }, linksResult] = await Promise.all([
+      sb.functions.invoke('nuvemshop-catalogo', { method: 'GET' }),
+      sb.from('nuvemshop_vinculos').select('*').eq('ativo', true)
+    ]);
+    if (error) throw error;
+    if (linksResult.error) throw linksResult.error;
+    if (!Array.isArray(data?.produtos)) throw new Error('Catalogo em formato inesperado.');
+
+    nuvemshopStoreId = data.store_id;
+    nuvemshopCatalogRows = flattenNuvemshopCatalog(data.produtos, linksResult.data || []);
+    nuvemshopCatalogLoaded = true;
+    renderNuvemshopCatalog();
+  } catch (error) {
+    console.error('Falha ao consultar Nuvemshop', error);
+    message.className = 'nuvemshop-message error';
+    message.textContent = 'Nao foi possivel consultar o catalogo. Confira os logs da funcao nuvemshop-catalogo.';
+    message.style.display = 'flex';
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Atualizar catalogo';
+  }
+}
+
+function renderNuvemshopCatalog() {
+  const statusFilter = document.getElementById('nuvemshop-filter-status')?.value || '';
+  const search = normalizeCode(document.getElementById('nuvemshop-search')?.value || '');
+  const filtered = nuvemshopCatalogRows.filter(row => {
+    const matchesStatus = !statusFilter || row.status === statusFilter;
+    const haystack = normalizeCode([
+      row.remoteName,
+      row.variantLabel,
+      row.sku,
+      row.barcode,
+      row.localProduct?.nome,
+      ...row.candidates.map(candidate => candidate.nome)
+    ].filter(Boolean).join(' '));
+    return matchesStatus && (!search || haystack.includes(search));
+  });
+
+  const identified = nuvemshopCatalogRows.filter(row => row.status === 'linked' || row.status === 'matched').length;
+  const review = nuvemshopCatalogRows.length - identified;
+  document.getElementById('nuvemshop-stat-local').textContent = products.length;
+  document.getElementById('nuvemshop-stat-remote').textContent = nuvemshopCatalogRows.length;
+  document.getElementById('nuvemshop-stat-matched').textContent = identified;
+  document.getElementById('nuvemshop-stat-review').textContent = review;
+  document.getElementById('nuvemshop-list-title').textContent = `Catalogo externo - loja ${nuvemshopStoreId || ''}`;
+
+  const message = document.getElementById('nuvemshop-message');
+  const tableWrap = document.getElementById('nuvemshop-table-wrap');
+  const tbody = document.getElementById('nuvemshop-tbody');
+  message.style.display = 'none';
+  tableWrap.style.display = 'block';
+
+  if (!filtered.length) {
+    tbody.innerHTML = '<tr><td colspan="7" class="empty-state">Nenhum item encontrado para este filtro.</td></tr>';
+    return;
+  }
+
+  const statusLabels = {
+    linked: 'Vinculado',
+    matched: 'Exato',
+    ambiguous: 'Revisar',
+    unmatched: 'Nao identificado'
+  };
+
+  tbody.innerHTML = filtered.map(row => {
+    const image = row.image
+      ? `<img src="${escapeHtml(row.image)}" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><div class="nuvemshop-product-placeholder" style="display:none">Sem foto</div>`
+      : '<div class="nuvemshop-product-placeholder">Sem foto</div>';
+    const localDescription = row.localProduct
+      ? `<div class="nuvemshop-local-name">${escapeHtml(row.localProduct.nome)}</div><div class="nuvemshop-local-meta">ID ${row.localProduct.id}${row.linkVoltage ? ` - ${escapeHtml(row.linkVoltage)}` : ''}</div>`
+      : row.candidates.length > 1
+        ? `<div class="nuvemshop-local-name">${row.candidates.length} produtos com o mesmo codigo</div><div class="nuvemshop-local-meta">${row.candidates.map(candidate => escapeHtml(candidate.nome)).join(' / ')}</div>`
+        : '<span class="csv-muted">-</span>';
+    const remoteStock = row.remoteStock == null ? 'Ilimitado' : row.remoteStock;
+    const localStock = row.localStock == null ? '-' : row.localStock;
+
+    return `<tr>
+      <td><span class="nuvemshop-status ${row.status}">${statusLabels[row.status]}</span></td>
+      <td><div class="nuvemshop-product">${image}<div><div class="nuvemshop-product-name">${escapeHtml(row.remoteName)}</div><div class="nuvemshop-product-id">Produto ${row.productId}</div></div></div></td>
+      <td><div>${escapeHtml(row.variantLabel)}</div><div class="nuvemshop-variant">Variante ${row.variantId || '-'}</div></td>
+      <td><div class="code-tags">${row.sku ? `<span class="code-tag">SKU: ${escapeHtml(row.sku)}</span>` : ''}${row.barcode ? `<span class="code-tag">Barras: ${escapeHtml(row.barcode)}</span>` : ''}${!row.sku && !row.barcode ? '<span class="csv-muted">Sem codigo</span>' : ''}</div></td>
+      <td><span class="nuvemshop-stock">${escapeHtml(remoteStock)}</span></td>
+      <td>${localDescription}</td>
+      <td><span class="nuvemshop-stock">${escapeHtml(localStock)}</span></td>
+    </tr>`;
+  }).join('');
+}
+
+function localDateValue(date = new Date()) {
+  const localTime = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return localTime.toISOString().slice(0, 10);
+}
+
+function setDefaultCsvMovementDate() {
+  const input = document.getElementById('csv-movement-date');
+  if (!input) return;
+  input.max = localDateValue();
+  if (!input.value) input.value = localDateValue();
+}
+
+function movementDateFromFileName(fileName) {
+  const match = String(fileName || '').match(/(?:^|\D)(\d{1,2})[-_.](\d{1,2})(?:[-_.](\d{2,4}))?(?:\D|$)/);
+  if (!match) return null;
+
+  const day = Number(match[1]);
+  const month = Number(match[2]);
+  const now = new Date();
+  let year = match[3] ? Number(match[3]) : now.getFullYear();
+  if (year < 100) year += 2000;
+
+  let candidate = new Date(year, month - 1, day, 12);
+  if (!match[3] && candidate > now) {
+    year -= 1;
+    candidate = new Date(year, month - 1, day, 12);
+  }
+
+  if (
+    candidate.getFullYear() !== year ||
+    candidate.getMonth() !== month - 1 ||
+    candidate.getDate() !== day
+  ) return null;
+
+  return localDateValue(candidate);
+}
+
+async function hashCsvContent(text) {
+  const normalized = String(text || '')
+    .replace(/^\uFEFF/, '')
+    .replace(/\r\n?/g, '\n')
+    .trim();
+  const bytes = new TextEncoder().encode(normalized);
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
 }
 
 function parseCsvText(text) {
@@ -653,6 +991,7 @@ function updateCsvApplyState() {
   const applicable = csvApplicableRows();
   const invalid = csvPreviewRows.filter(row => row.product && row.item.quantidade <= 0).length;
   const insufficient = csvPreviewRows.filter(row => row.product && row.afterQty < 0).length;
+  const movementDate = document.getElementById('csv-movement-date')?.value || '';
 
   if (csvPreviewApplied) {
     btn.disabled = true;
@@ -663,9 +1002,12 @@ function updateCsvApplyState() {
   }
 
   btn.textContent = applicable.length ? `Aplicar baixa (${applicable.length})` : 'Aplicar baixa';
-  btn.disabled = !applicable.length || invalid > 0 || insufficient > 0;
+  btn.disabled = !applicable.length || invalid > 0 || insufficient > 0 || !movementDate || !csvPreviewHash;
 
-  if (!csvPreviewRows.length) {
+  if (!movementDate) {
+    msg.classList.add('err');
+    msg.textContent = 'Informe a data do movimento.';
+  } else if (!csvPreviewRows.length) {
     msg.textContent = '';
   } else if (invalid > 0) {
     msg.classList.add('err');
@@ -684,6 +1026,7 @@ function clearCsvPreview() {
   csvPreviewRows = [];
   csvPreviewApplied = false;
   csvPreviewFileName = null;
+  csvPreviewHash = null;
   const input = document.getElementById('csv-baixa-input');
   const summaryEl = document.getElementById('csv-preview-summary');
   const wrapEl = document.getElementById('csv-preview-table-wrap');
@@ -706,12 +1049,23 @@ async function handleCsvPreview(event) {
   csvPreviewRows = [];
   csvPreviewApplied = false;
   csvPreviewFileName = file.name;
+  csvPreviewHash = null;
+  const detectedMovementDate = movementDateFromFileName(file.name);
+  const movementInput = document.getElementById('csv-movement-date');
+  if (detectedMovementDate && movementInput) movementInput.value = detectedMovementDate;
   updateCsvApplyState();
   summaryEl.textContent = 'Lendo arquivo...';
   wrapEl.style.display = 'none';
   tbody.innerHTML = '';
 
   const text = await file.text();
+  try {
+    csvPreviewHash = await hashCsvContent(text);
+  } catch (error) {
+    summaryEl.textContent = 'Nao foi possivel identificar o arquivo com seguranca.';
+    updateCsvApplyState();
+    return;
+  }
   const rows = parseCsvText(text);
   const items = summarizeCsvItems(csvRowsToItems(rows));
 
@@ -790,13 +1144,15 @@ async function confirmCsvBaixa() {
   const applicable = csvApplicableRows();
   const invalid = csvPreviewRows.filter(row => row.product && row.item.quantidade <= 0).length;
   const insufficient = csvPreviewRows.filter(row => row.product && row.afterQty < 0).length;
+  const movementDate = document.getElementById('csv-movement-date')?.value || '';
 
-  if (!applicable.length || invalid > 0 || insufficient > 0 || csvPreviewApplied) {
+  if (!applicable.length || invalid > 0 || insufficient > 0 || csvPreviewApplied || !movementDate || !csvPreviewHash) {
     updateCsvApplyState();
     return;
   }
 
-  const ok = confirm(`Aplicar baixa em ${applicable.length} produto${applicable.length === 1 ? '' : 's'} encontrado${applicable.length === 1 ? '' : 's'}?`);
+  const movementLabel = new Date(`${movementDate}T12:00:00`).toLocaleDateString('pt-BR');
+  const ok = confirm(`Aplicar o fechamento de ${movementLabel} em ${applicable.length} produto${applicable.length === 1 ? '' : 's'} encontrado${applicable.length === 1 ? '' : 's'}?`);
   if (!ok) return;
 
   btn.disabled = true;
@@ -822,10 +1178,12 @@ async function confirmCsvBaixa() {
     total_csv: csvPreviewRows.reduce((sum, row) => sum + row.item.quantidade, 0)
   };
 
-  const { data, error } = await sb.rpc('registrar_baixa_csv_produtos', {
+  const { data, error } = await sb.rpc('registrar_fechamento_csv_produtos', {
     p_itens: itens,
     p_arquivo_nome: csvPreviewFileName,
-    p_resumo: resumo
+    p_resumo: resumo,
+    p_arquivo_hash: csvPreviewHash,
+    p_data_movimento: movementDate
   });
 
   if (error) {
@@ -1149,6 +1507,9 @@ function renderCsvLots() {
 
   el.innerHTML = csvLots.map(lote => {
     const time = new Date(lote.created_at).toLocaleString('pt-BR');
+    const movementDate = lote.data_movimento
+      ? new Date(`${lote.data_movimento}T12:00:00`).toLocaleDateString('pt-BR')
+      : 'nao informada';
     const itens = (lote.baixas_csv_itens || []).slice().sort((a, b) => a.produto_nome.localeCompare(b.produto_nome));
     const details = itens.length
       ? `<div class="csv-lot-details">
@@ -1170,7 +1531,7 @@ function renderCsvLots() {
       <div class="csv-lot-main">
         <div>
           <div class="csv-lot-title">${escapeHtml(lote.arquivo_nome || 'CSV aplicado')}</div>
-          <div class="csv-lot-meta">${time} · ${escapeHtml(lote.aplicado_email || 'admin')}</div>
+          <div class="csv-lot-meta">Movimento ${movementDate} · aplicado em ${time} · ${escapeHtml(lote.aplicado_email || 'admin')}</div>
         </div>
         <div class="csv-lot-stat"><strong>${lote.produtos_encontrados || 0}</strong>encontrados</div>
         <div class="csv-lot-stat"><strong>${lote.total_aplicado || 0}</strong>pecas baixadas</div>
@@ -1339,9 +1700,10 @@ function subscribeRealtime() {
 
 // ─── TABS ────────────────────────────────────────────────
 function switchTab(name) {
-  document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('active', ['dashboard','produtos','vendedores','historico'][i] === name));
+  document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('active', ['dashboard','produtos','nuvemshop','vendedores','historico'][i] === name));
   document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
   document.getElementById(`tab-${name}`).classList.add('active');
+  if (name === 'nuvemshop') loadNuvemshopCatalog();
 }
 
 document.getElementById('login-pass').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
