@@ -143,6 +143,11 @@
 
   /* Grid de identificação alinhada: 3 códigos em linha */
   .codes-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; }
+  #codes-simple-wrap, #codes-voltage-wrap { display: none; }
+  #codes-simple-wrap.visible, #codes-voltage-wrap.visible { display: block; }
+  .voltage-codes-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 16px; }
+  .voltage-code-card { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 14px; }
+  .voltage-code-card .form-field:last-child { margin-bottom: 0; }
 
   .checkbox-row { display: flex; align-items: center; gap: 10px; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 12px 14px; margin-bottom: 14px; cursor: pointer; }
   .checkbox-row input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--accent); cursor: pointer; }
@@ -221,6 +226,9 @@
   .csv-preview-card { background: var(--surface); border: 1px solid var(--border); border-radius: 4px; padding: 20px; margin-top: 28px; }
   .csv-preview-header { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; margin-bottom: 14px; }
   .csv-preview-sub { color: var(--muted); font-size: 12px; margin-top: 4px; max-width: 660px; }
+  .csv-preview-controls { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; }
+  .csv-movement-date { display: grid; gap: 5px; color: var(--muted); font-size: 10px; font-weight: 700; text-transform: uppercase; }
+  .csv-movement-date input { min-height: 36px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg); color: var(--text); padding: 0 10px; color-scheme: dark; }
   .csv-upload-btn { position: relative; display: inline-flex; align-items: center; justify-content: center; min-height: 36px; border: 1px solid var(--accent); border-radius: 4px; background: rgba(79,110,247,.12); color: var(--accent); font-size: 12px; font-weight: 700; padding: 0 14px; cursor: pointer; }
   .csv-upload-btn input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
   .csv-preview-summary { color: var(--muted); background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 12px 14px; font-size: 12px; margin-bottom: 14px; }
@@ -236,6 +244,26 @@
   .csv-status.err { color: var(--red); background: rgba(239,68,68,.12); }
   .csv-status.muted { color: var(--muted); background: var(--surface2); }
   .csv-muted { color: var(--muted); font-size: 11px; }
+
+  /* NUVEMSHOP - CONFERENCIA SOMENTE LEITURA */
+  .nuvemshop-heading { align-items: flex-end; }
+  .nuvemshop-connection { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 11px; margin-top: 6px; }
+  .nuvemshop-connection span { width: 7px; height: 7px; border-radius: 50%; background: var(--green); }
+  .nuvemshop-stats { margin-top: 22px; }
+  .nuvemshop-message { min-height: 76px; display: flex; align-items: center; justify-content: center; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: var(--muted); font-size: 13px; padding: 20px; }
+  .nuvemshop-message.error { color: var(--red); border-color: rgba(239,68,68,.35); }
+  .nuvemshop-status { display: inline-flex; border-radius: 4px; padding: 3px 8px; font-size: 10px; font-weight: 800; text-transform: uppercase; white-space: nowrap; }
+  .nuvemshop-status.linked { color: var(--accent); background: rgba(79,110,247,.12); }
+  .nuvemshop-status.matched { color: var(--green); background: rgba(34,197,94,.12); }
+  .nuvemshop-status.ambiguous { color: var(--yellow); background: rgba(245,158,11,.12); }
+  .nuvemshop-status.unmatched { color: var(--muted); background: var(--surface2); }
+  .nuvemshop-product { display: flex; align-items: center; gap: 10px; min-width: 250px; }
+  .nuvemshop-product img { width: 40px; height: 40px; border: 1px solid var(--border); border-radius: 4px; object-fit: cover; background: var(--surface2); }
+  .nuvemshop-product-placeholder { width: 40px; height: 40px; border: 1px solid var(--border); border-radius: 4px; display: flex; align-items: center; justify-content: center; color: var(--muted); background: var(--surface2); font-size: 11px; }
+  .nuvemshop-product-name { font-weight: 600; }
+  .nuvemshop-product-id, .nuvemshop-variant, .nuvemshop-local-meta { color: var(--muted); font-size: 11px; margin-top: 3px; }
+  .nuvemshop-stock { font-size: 16px; font-weight: 700; }
+  .nuvemshop-local-name { font-weight: 600; }
 
   /* PAINEL LATERAL DE BAIXA */
   .side-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 200; }
@@ -275,8 +303,9 @@
   .add-vendedor-row input { flex: 1; }
 
   @media(max-width:700px) {
-    .codes-grid, .volt-input-row, .qty-simple-row { grid-template-columns: 1fr; }
+    .codes-grid, .voltage-codes-grid, .volt-input-row, .qty-simple-row { grid-template-columns: 1fr; }
     .side-panel { width: 100%; right: -100%; }
+    .nuvemshop-product { min-width: 210px; }
   }
   @media(max-width:600px) {
     .tabs { padding: 16px 16px 0; } .tab-content { padding: 16px; } header { padding: 0 16px; }
