@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Estoque - Administração</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<link rel="stylesheet" href="css/admin.css?v=20260716-nuvemshop-historico-1">
+<link rel="stylesheet" href="css/admin.css?v=20260716-nuvemshop-paginacao-2">
 </head>
 <body>
 
@@ -287,14 +287,14 @@
     <div class="section-header">
       <div class="section-title" id="nuvemshop-list-title">Catalogo externo</div>
       <div class="filters-row">
-        <select class="filter-select" id="nuvemshop-filter-status" onchange="renderNuvemshopCatalog()">
+        <select class="filter-select" id="nuvemshop-filter-status" onchange="handleNuvemshopCatalogFilters()">
           <option value="">Todos os status</option>
           <option value="linked">Vinculados</option>
           <option value="matched">Correspondencia exata</option>
           <option value="ambiguous">Revisar correspondencia</option>
           <option value="unmatched">Nao identificados</option>
         </select>
-        <input class="search-input" id="nuvemshop-search" placeholder="Buscar no catalogo..." oninput="renderNuvemshopCatalog()">
+        <input class="search-input" id="nuvemshop-search" placeholder="Buscar no catalogo..." oninput="handleNuvemshopCatalogFilters()">
       </div>
     </div>
     <div class="nuvemshop-message" id="nuvemshop-message">Abra esta aba para consultar o catalogo.</div>
@@ -304,6 +304,21 @@
         <tbody id="nuvemshop-tbody"></tbody>
       </table>
     </div>
+    <div class="nuvemshop-pagination" id="nuvemshop-pagination" style="display:none">
+      <div class="nuvemshop-pagination-summary" id="nuvemshop-pagination-summary"></div>
+      <div class="nuvemshop-pagination-controls">
+        <select class="filter-select" id="nuvemshop-page-size" onchange="setNuvemshopCatalogPageSize(this.value)" aria-label="Itens por pagina">
+          <option value="25">25 por pagina</option>
+          <option value="50" selected>50 por pagina</option>
+          <option value="100">100 por pagina</option>
+        </select>
+        <button type="button" class="nuvemshop-page-btn" id="nuvemshop-page-first" onclick="setNuvemshopCatalogPage(1)" title="Primeira pagina" aria-label="Primeira pagina">&laquo;</button>
+        <button type="button" class="nuvemshop-page-btn" id="nuvemshop-page-prev" onclick="changeNuvemshopCatalogPage(-1)" title="Pagina anterior" aria-label="Pagina anterior">&lsaquo;</button>
+        <span class="nuvemshop-page-info" id="nuvemshop-page-info"></span>
+        <button type="button" class="nuvemshop-page-btn" id="nuvemshop-page-next" onclick="changeNuvemshopCatalogPage(1)" title="Proxima pagina" aria-label="Proxima pagina">&rsaquo;</button>
+        <button type="button" class="nuvemshop-page-btn" id="nuvemshop-page-last" onclick="setNuvemshopCatalogPage('last')" title="Ultima pagina" aria-label="Ultima pagina">&raquo;</button>
+      </div>
+    </div>
 
     <section class="nuvemshop-audit-section" aria-labelledby="nuvemshop-audit-title">
       <div class="section-header">
@@ -312,13 +327,13 @@
           <div class="nuvemshop-audit-subtitle">Registro somente leitura das conferencias executadas no servidor.</div>
         </div>
         <div class="filters-row">
-          <select class="filter-select" id="nuvemshop-audit-filter" onchange="renderNuvemshopAuditHistory()">
+          <select class="filter-select" id="nuvemshop-audit-filter" onchange="handleNuvemshopAuditFilters()">
             <option value="">Todos os registros</option>
             <option value="simulacao">Simulacoes</option>
             <option value="aplicacao">Aplicacoes</option>
             <option value="falha">Com falha</option>
           </select>
-          <input class="search-input" id="nuvemshop-audit-search" placeholder="Buscar no historico..." oninput="renderNuvemshopAuditHistory()">
+          <input class="search-input" id="nuvemshop-audit-search" placeholder="Buscar no historico..." oninput="handleNuvemshopAuditFilters()">
           <button class="btn-cancel" id="nuvemshop-audit-refresh" onclick="loadNuvemshopAuditHistory(true)">Atualizar</button>
         </div>
       </div>
@@ -328,6 +343,21 @@
           <thead><tr><th>Data</th><th>Modo</th><th>Loja</th><th>Itens</th><th>Resultado</th><th>Solicitado por</th><th>Detalhes</th></tr></thead>
           <tbody id="nuvemshop-audit-tbody"></tbody>
         </table>
+      </div>
+      <div class="nuvemshop-pagination" id="nuvemshop-audit-pagination" style="display:none">
+        <div class="nuvemshop-pagination-summary" id="nuvemshop-audit-pagination-summary"></div>
+        <div class="nuvemshop-pagination-controls">
+          <select class="filter-select" id="nuvemshop-audit-page-size" onchange="setNuvemshopAuditPageSize(this.value)" aria-label="Registros por pagina">
+            <option value="10" selected>10 por pagina</option>
+            <option value="20">20 por pagina</option>
+            <option value="30">30 por pagina</option>
+          </select>
+          <button type="button" class="nuvemshop-page-btn" id="nuvemshop-audit-page-first" onclick="setNuvemshopAuditPage(1)" title="Primeira pagina" aria-label="Primeira pagina">&laquo;</button>
+          <button type="button" class="nuvemshop-page-btn" id="nuvemshop-audit-page-prev" onclick="changeNuvemshopAuditPage(-1)" title="Pagina anterior" aria-label="Pagina anterior">&lsaquo;</button>
+          <span class="nuvemshop-page-info" id="nuvemshop-audit-page-info"></span>
+          <button type="button" class="nuvemshop-page-btn" id="nuvemshop-audit-page-next" onclick="changeNuvemshopAuditPage(1)" title="Proxima pagina" aria-label="Proxima pagina">&rsaquo;</button>
+          <button type="button" class="nuvemshop-page-btn" id="nuvemshop-audit-page-last" onclick="setNuvemshopAuditPage('last')" title="Ultima pagina" aria-label="Ultima pagina">&raquo;</button>
+        </div>
       </div>
     </section>
   </div>
@@ -524,6 +554,6 @@
 <div class="toast-stack" id="toast-stack"></div>
 
 <script src="js/supabase-config.js"></script>
-<script src="js/admin.js?v=20260716-nuvemshop-historico-1"></script>
+<script src="js/admin.js?v=20260716-nuvemshop-paginacao-2"></script>
 </body>
 </html>

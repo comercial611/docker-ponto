@@ -260,6 +260,13 @@
   .nuvemshop-product { display: flex; align-items: center; gap: 10px; min-width: 250px; }
   .nuvemshop-product img { width: 40px; height: 40px; border: 1px solid var(--border); border-radius: 4px; object-fit: cover; background: var(--surface2); }
   .nuvemshop-product-placeholder { width: 40px; height: 40px; border: 1px solid var(--border); border-radius: 4px; display: flex; align-items: center; justify-content: center; color: var(--muted); background: var(--surface2); font-size: 11px; }
+  .nuvemshop-pagination { min-height: 54px; display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 12px; }
+  .nuvemshop-pagination-summary { color: var(--muted); font-size: 12px; }
+  .nuvemshop-pagination-controls { display: flex; align-items: center; gap: 6px; }
+  .nuvemshop-page-btn { width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: var(--text); font-size: 18px; line-height: 1; cursor: pointer; }
+  .nuvemshop-page-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  .nuvemshop-page-btn:disabled { opacity: .35; cursor: not-allowed; }
+  .nuvemshop-page-info { min-width: 108px; color: var(--text); font-size: 12px; text-align: center; white-space: nowrap; }
   .nuvemshop-product-name { font-weight: 600; }
   .nuvemshop-product-id, .nuvemshop-variant, .nuvemshop-local-meta { color: var(--muted); font-size: 11px; margin-top: 3px; }
   .nuvemshop-stock { font-size: 16px; font-weight: 700; }
@@ -381,6 +388,9 @@
     .nuvemshop-simulation-result-item { border-bottom: 1px solid var(--border); }
     .nuvemshop-audit-section .filters-row { width: 100%; }
     .nuvemshop-audit-section .filter-select, .nuvemshop-audit-section .search-input { flex: 1; min-width: 150px; }
+    .nuvemshop-pagination { align-items: stretch; flex-direction: column; }
+    .nuvemshop-pagination-controls { justify-content: space-between; }
+    .nuvemshop-pagination-controls .filter-select { flex: 1; min-width: 0; }
   }
   @media(max-width:600px) {
     .tabs { padding: 16px 16px 0; } .tab-content { padding: 16px; } header { padding: 0 16px; }
