@@ -294,6 +294,20 @@
   .nuvemshop-preview-diff { font-size: 15px; font-weight: 700; }
   .nuvemshop-preview-diff.increase { color: var(--accent); }
   .nuvemshop-preview-diff.decrease { color: var(--yellow); }
+  .nuvemshop-preview-actions { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 0 0 18px; }
+  .nuvemshop-preview-validation { color: var(--muted); font-size: 12px; }
+  .nuvemshop-preview-validation.valid { color: var(--green); }
+  .nuvemshop-simulation-modal { max-width: 620px; }
+  .nuvemshop-simulation-summary { border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); padding: 14px 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
+  .nuvemshop-simulation-summary strong { color: var(--text); }
+  .nuvemshop-simulation-result { display: none; margin-top: 16px; }
+  .nuvemshop-simulation-result.visible { display: block; }
+  .nuvemshop-simulation-result-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
+  .nuvemshop-simulation-result-item { min-width: 0; padding: 12px 8px; text-align: center; border-right: 1px solid var(--border); }
+  .nuvemshop-simulation-result-item:last-child { border-right: 0; }
+  .nuvemshop-simulation-result-item span { display: block; color: var(--muted); font-size: 9px; text-transform: uppercase; }
+  .nuvemshop-simulation-result-item strong { display: block; margin-top: 5px; font-size: 18px; }
+  .nuvemshop-simulation-safe { margin-top: 12px; color: var(--green); font-size: 12px; }
 
   /* PAINEL LATERAL DE BAIXA */
   .side-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 200; }
@@ -336,6 +350,9 @@
     .codes-grid, .voltage-codes-grid, .volt-input-row, .qty-simple-row { grid-template-columns: 1fr; }
     .side-panel { width: 100%; right: -100%; }
     .nuvemshop-product { min-width: 210px; }
+    .nuvemshop-preview-actions { align-items: stretch; flex-direction: column; }
+    .nuvemshop-simulation-result-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .nuvemshop-simulation-result-item { border-bottom: 1px solid var(--border); }
   }
   @media(max-width:600px) {
     .tabs { padding: 16px 16px 0; } .tab-content { padding: 16px; } header { padding: 0 16px; }

@@ -60,6 +60,7 @@ Esta pasta documenta a configuracao de seguranca usada no Supabase de producao.
 - `functions/nuvemshop-oauth`: conclui a instalacao OAuth e salva o token criptografado, sem exibir a credencial.
 - `functions/nuvemshop-lgpd`: recebe os tres webhooks obrigatorios de privacidade e valida a assinatura da Nuvemshop.
 - `functions/nuvemshop-catalogo`: consulta o catalogo e os locais de estoque da Nuvemshop somente para administradores, sem alterar o estoque externo.
+- `functions/nuvemshop-sincronizacao`: recalcula a previa no servidor em modo de simulacao e recusa qualquer tentativa de escrita externa nesta fase.
 - `rollback-segundo-admin-principal.sql`: devolve o login vendas4 ao perfil funcionario em caso de necessidade.
 - `rollback-policies-abertas.sql`: volta para as policies antigas em caso de emergencia.
 
