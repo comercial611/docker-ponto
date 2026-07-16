@@ -977,7 +977,8 @@ function renderNuvemshopSimulationResult(data) {
     <div class="nuvemshop-simulation-result-item"><span>Sem controle</span><strong>${escapeHtml(summary.sem_controle)}</strong></div>
     <div class="nuvemshop-simulation-result-item"><span>Erros</span><strong>${escapeHtml(summary.erros)}</strong></div>
   </div>
-  <div class="nuvemshop-simulation-safe">Validacao concluida em modo seguro. Nenhum estoque foi alterado.</div>`;
+  <div class="nuvemshop-simulation-safe">Validacao concluida em modo seguro. Nenhum estoque foi alterado.</div>
+  <div class="nuvemshop-simulation-audit">Auditoria registrada: ${escapeHtml(data.auditoria_id)}</div>`;
   result.classList.add('visible');
 }
 
@@ -993,7 +994,7 @@ async function runNuvemshopSimulation() {
       body: { modo: 'simular', store_id: nuvemshopStoreId }
     });
     if (error) throw error;
-    if (data?.modo !== 'simulacao' || data?.escrita_habilitada !== false || !data?.resumo) {
+    if (data?.modo !== 'simulacao' || data?.escrita_habilitada !== false || !data?.resumo || !data?.auditoria_id) {
       throw new Error('O servidor retornou uma validacao inesperada.');
     }
 
