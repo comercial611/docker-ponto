@@ -283,6 +283,17 @@
   .nuvemshop-voltage-options button.active { border-color: var(--accent); background: rgba(79,110,247,.12); color: var(--accent); }
   .nuvemshop-manual-note { color: var(--muted); font-size: 11px; margin: 4px 0 12px; }
   .nuvemshop-manual-actions { display: flex; gap: 10px; margin-top: 14px; }
+  .nuvemshop-sync-preview { margin: 8px 0 32px; padding-top: 24px; border-top: 1px solid var(--border); }
+  .nuvemshop-preview-time { color: var(--muted); font-size: 11px; margin-top: 5px; }
+  .nuvemshop-preview-stats { margin-bottom: 18px; }
+  .nuvemshop-preview-status { display: inline-flex; border-radius: 4px; padding: 3px 8px; font-size: 10px; font-weight: 800; text-transform: uppercase; white-space: nowrap; }
+  .nuvemshop-preview-status.equal { color: var(--green); background: rgba(34,197,94,.12); }
+  .nuvemshop-preview-status.increase { color: var(--accent); background: rgba(79,110,247,.12); }
+  .nuvemshop-preview-status.decrease { color: var(--yellow); background: rgba(245,158,11,.12); }
+  .nuvemshop-preview-status.uncontrolled { color: var(--muted); background: var(--surface2); }
+  .nuvemshop-preview-diff { font-size: 15px; font-weight: 700; }
+  .nuvemshop-preview-diff.increase { color: var(--accent); }
+  .nuvemshop-preview-diff.decrease { color: var(--yellow); }
 
   /* PAINEL LATERAL DE BAIXA */
   .side-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 200; }
