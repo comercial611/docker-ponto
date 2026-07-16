@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Estoque - Administração</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<link rel="stylesheet" href="css/admin.css?v=20260716-nuvemshop-auditoria-1">
+<link rel="stylesheet" href="css/admin.css?v=20260716-nuvemshop-historico-1">
 </head>
 <body>
 
@@ -304,6 +304,32 @@
         <tbody id="nuvemshop-tbody"></tbody>
       </table>
     </div>
+
+    <section class="nuvemshop-audit-section" aria-labelledby="nuvemshop-audit-title">
+      <div class="section-header">
+        <div>
+          <div class="section-title" id="nuvemshop-audit-title">Historico de validacoes</div>
+          <div class="nuvemshop-audit-subtitle">Registro somente leitura das conferencias executadas no servidor.</div>
+        </div>
+        <div class="filters-row">
+          <select class="filter-select" id="nuvemshop-audit-filter" onchange="renderNuvemshopAuditHistory()">
+            <option value="">Todos os registros</option>
+            <option value="simulacao">Simulacoes</option>
+            <option value="aplicacao">Aplicacoes</option>
+            <option value="falha">Com falha</option>
+          </select>
+          <input class="search-input" id="nuvemshop-audit-search" placeholder="Buscar no historico..." oninput="renderNuvemshopAuditHistory()">
+          <button class="btn-cancel" id="nuvemshop-audit-refresh" onclick="loadNuvemshopAuditHistory(true)">Atualizar</button>
+        </div>
+      </div>
+      <div class="nuvemshop-message" id="nuvemshop-audit-message">Abra esta aba para consultar o historico.</div>
+      <div class="table-wrap" id="nuvemshop-audit-table-wrap" style="display:none">
+        <table class="nuvemshop-audit-table">
+          <thead><tr><th>Data</th><th>Modo</th><th>Loja</th><th>Itens</th><th>Resultado</th><th>Solicitado por</th><th>Detalhes</th></tr></thead>
+          <tbody id="nuvemshop-audit-tbody"></tbody>
+        </table>
+      </div>
+    </section>
   </div>
 
   <!-- VENDEDORES -->
@@ -498,6 +524,6 @@
 <div class="toast-stack" id="toast-stack"></div>
 
 <script src="js/supabase-config.js"></script>
-<script src="js/admin.js?v=20260716-nuvemshop-auditoria-1"></script>
+<script src="js/admin.js?v=20260716-nuvemshop-historico-1"></script>
 </body>
 </html>
