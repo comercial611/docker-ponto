@@ -10,6 +10,7 @@ let csvLots = [];
 let nuvemshopCatalogRows = [];
 let nuvemshopCatalogLoaded = false;
 let nuvemshopStoreId = null;
+let nuvemshopStockLocation = null;
 let nuvemshopManualRow = null;
 let nuvemshopManualVoltage = null;
 let nuvemshopPreviewGenerated = false;
@@ -714,15 +715,18 @@ async function loadNuvemshopCatalog(force = false) {
   tableWrap.style.display = 'none';
 
   try {
-    const [{ data, error }, linksResult] = await Promise.all([
-      sb.functions.invoke('nuvemshop-catalogo', { method: 'GET' }),
-      sb.from('nuvemshop_vinculos').select('*').eq('ativo', true)
-    ]);
+    const { data, error } = await sb.functions.invoke('nuvemshop-catalogo', { method: 'GET' });
     if (error) throw error;
+    if (!data?.store_id) throw new Error('Loja Nuvemshop nao identificada.');
+    const linksResult = await sb.from('nuvemshop_vinculos')
+      .select('*')
+      .eq('store_id', data.store_id)
+      .eq('ativo', true);
     if (linksResult.error) throw linksResult.error;
     if (!Array.isArray(data?.produtos)) throw new Error('Catalogo em formato inesperado.');
 
     nuvemshopStoreId = data.store_id;
+    nuvemshopStockLocation = data.estoque_local || null;
     nuvemshopCatalogRows = flattenNuvemshopCatalog(data.produtos, linksResult.data || []);
     nuvemshopCatalogLoaded = true;
     if (nuvemshopPreviewGenerated) nuvemshopPreviewGeneratedAt = new Date();
@@ -761,6 +765,21 @@ function renderNuvemshopCatalog() {
   document.getElementById('nuvemshop-stat-matched').textContent = identified;
   document.getElementById('nuvemshop-stat-review').textContent = review;
   document.getElementById('nuvemshop-list-title').textContent = `Catalogo externo - loja ${nuvemshopStoreId || ''}`;
+  const connectionText = document.getElementById('nuvemshop-connection-text');
+  if (connectionText) {
+    if (nuvemshopStockLocation?.status === 'unico') {
+      connectionText.textContent = `Somente leitura | Local confirmado: ${nuvemshopStockLocation.local.nome}`;
+    } else if (nuvemshopStockLocation?.status === 'multiplo') {
+      connectionText.textContent = `${nuvemshopStockLocation.total} locais encontrados | Sincronizacao bloqueada`;
+    } else if (nuvemshopStockLocation?.status === 'nao_encontrado') {
+      connectionText.textContent = 'Somente leitura | Nenhum local separado informado pela Nuvemshop';
+    } else if (nuvemshopStockLocation?.status === 'indisponivel') {
+      const httpStatus = nuvemshopStockLocation.http_status ? ` (HTTP ${nuvemshopStockLocation.http_status})` : '';
+      connectionText.textContent = `Somente leitura | Consulta de local indisponivel${httpStatus}`;
+    } else {
+      connectionText.textContent = 'Somente leitura | Local de estoque ainda nao confirmado';
+    }
+  }
   if (nuvemshopPreviewGenerated) renderNuvemshopSyncPreview();
 
   const message = document.getElementById('nuvemshop-message');
@@ -929,6 +948,7 @@ async function confirmNuvemshopLink(productId, variantId) {
   }
 
   const { data, error } = await sb.from('nuvemshop_vinculos').insert({
+    store_id: nuvemshopStoreId,
     produto_id: row.localProduct.id,
     voltagem: row.linkVoltage || null,
     nuvemshop_produto_id: row.productId,
@@ -1133,6 +1153,7 @@ async function saveManualNuvemshopLink() {
   errorElement.textContent = '';
 
   const { data, error } = await sb.from('nuvemshop_vinculos').insert({
+    store_id: nuvemshopStoreId,
     produto_id: localProduct.id,
     voltagem: localProduct.tem_voltagem ? nuvemshopManualVoltage : null,
     nuvemshop_produto_id: row.productId,

@@ -248,7 +248,7 @@
   /* NUVEMSHOP - CONFERENCIA SOMENTE LEITURA */
   .nuvemshop-heading { align-items: flex-end; }
   .nuvemshop-connection { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 11px; margin-top: 6px; }
-  .nuvemshop-connection span { width: 7px; height: 7px; border-radius: 50%; background: var(--green); }
+  .nuvemshop-connection-dot { flex: 0 0 7px; width: 7px; height: 7px; border-radius: 50%; background: var(--green); }
   .nuvemshop-stats { margin-top: 22px; }
   .nuvemshop-message { min-height: 76px; display: flex; align-items: center; justify-content: center; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: var(--muted); font-size: 13px; padding: 20px; }
   .nuvemshop-message.error { color: var(--red); border-color: rgba(239,68,68,.35); }

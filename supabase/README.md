@@ -22,6 +22,7 @@ Esta pasta documenta a configuracao de seguranca usada no Supabase de producao.
 16. `16-base-vinculos-nuvemshop.sql`
 17. `17-conexao-nuvemshop-segura.sql`
 18. `18-codigos-por-voltagem.sql`
+19. `19-base-sincronizacao-nuvemshop.sql`
 
 ## O que foi protegido
 
@@ -55,9 +56,10 @@ Esta pasta documenta a configuracao de seguranca usada no Supabase de producao.
 - `16-base-vinculos-nuvemshop.sql`: cria os vinculos protegidos entre produtos locais e produtos ou variantes da Nuvemshop, sem consultar ou alterar estoque externo.
 - `17-conexao-nuvemshop-segura.sql`: cria a tabela sem acesso pelo navegador usada para guardar o token criptografado da Nuvemshop.
 - `18-codigos-por-voltagem.sql`: adiciona campos separados de fabricante, interno, referencia e barras para as variacoes 110V e 220V, preservando os campos antigos.
+- `19-base-sincronizacao-nuvemshop.sql`: associa cada vinculo a uma loja, registra o local de estoque conferido e cria tabelas protegidas de auditoria para futuras sincronizacoes.
 - `functions/nuvemshop-oauth`: conclui a instalacao OAuth e salva o token criptografado, sem exibir a credencial.
 - `functions/nuvemshop-lgpd`: recebe os tres webhooks obrigatorios de privacidade e valida a assinatura da Nuvemshop.
-- `functions/nuvemshop-catalogo`: consulta o catalogo da Nuvemshop somente para administradores e sem alterar estoque.
+- `functions/nuvemshop-catalogo`: consulta o catalogo e os locais de estoque da Nuvemshop somente para administradores, sem alterar o estoque externo.
 - `rollback-segundo-admin-principal.sql`: devolve o login vendas4 ao perfil funcionario em caso de necessidade.
 - `rollback-policies-abertas.sql`: volta para as policies antigas em caso de emergencia.
 
