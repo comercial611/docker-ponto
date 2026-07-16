@@ -15,6 +15,13 @@ function integerOrNull(value: unknown): number | null {
   return Number.isInteger(parsed) ? parsed : null;
 }
 
+function hasScope(value: unknown, expectedScope: string): boolean {
+  return String(value || "")
+    .split(/[\s,]+/)
+    .map((scope) => scope.trim().toLowerCase())
+    .includes(expectedScope.toLowerCase());
+}
+
 function localDestination(product: Record<string, unknown>, voltage: unknown): number | null {
   if (product.tem_voltagem === true) {
     if (voltage === "110V") return integerOrNull(product.quantidade_110v);
@@ -84,8 +91,10 @@ Deno.serve(async (request) => {
     const body = await request.json().catch(() => null);
     const payload = asRecord(body);
     const storeId = Number(payload?.store_id);
-    if (payload?.modo !== "simular") {
-      return jsonResponse({ error: "Somente o modo de simulacao esta habilitado." }, 400, headers);
+    const operationMode = String(payload?.modo || "");
+    const requestedAuditId = String(payload?.auditoria_id || "");
+    if (!["simular", "verificar_piloto"].includes(operationMode)) {
+      return jsonResponse({ error: "Modo de operacao nao permitido." }, 400, headers);
     }
     if (!Number.isSafeInteger(storeId) || storeId <= 0) {
       return jsonResponse({ error: "Loja Nuvemshop invalida." }, 400, headers);
@@ -113,17 +122,13 @@ Deno.serve(async (request) => {
     });
     const { data: connection, error: connectionError } = await supabaseAdmin
       .from("nuvemshop_conexoes")
-      .select("store_id, token_cifrado, token_iv, local_estoque_id, local_estoque_nome")
+      .select("store_id, token_cifrado, token_iv, escopos, local_estoque_id, local_estoque_nome, escrita_habilitada, limite_aplicacao")
       .eq("store_id", storeId)
       .maybeSingle();
     if (connectionError) throw connectionError;
     if (!connection) {
       return jsonResponse({ error: "Loja Nuvemshop nao conectada." }, 409, headers);
     }
-    if (!connection.local_estoque_id) {
-      return jsonResponse({ error: "Local de estoque ainda nao confirmado." }, 409, headers);
-    }
-
     const { data: links, error: linksError } = await supabaseAdmin
       .from("nuvemshop_vinculos")
       .select("id, produto_id, voltagem, nuvemshop_produto_id, nuvemshop_variante_id")
@@ -132,6 +137,80 @@ Deno.serve(async (request) => {
       .order("id")
       .limit(501);
     if (linksError) throw linksError;
+
+    if (operationMode === "verificar_piloto") {
+      const writeScopeGranted = hasScope(connection.escopos, "write_products");
+      const locationConfirmed = Boolean(connection.local_estoque_id);
+      const linksWithinLimit = Boolean(links?.length) && links.length <= 500;
+      const writeEnabled = connection.escrita_habilitada === true;
+      const applicationLimit = integerOrNull(connection.limite_aplicacao) || 1;
+      const safePilotLimit = applicationLimit === 1;
+      const blockers: string[] = [];
+      let simulationValid = false;
+      let simulationExpiresAt: string | null = null;
+
+      if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestedAuditId)) {
+        const { data: audit, error: auditError } = await supabaseAdmin
+          .from("nuvemshop_sincronizacoes")
+          .select("id, store_id, modo, status, solicitado_por, itens_falha, created_at")
+          .eq("id", requestedAuditId)
+          .eq("store_id", storeId)
+          .eq("modo", "simulacao")
+          .eq("solicitado_por", userResult.data.user.id)
+          .maybeSingle();
+        if (auditError) throw auditError;
+        if (audit?.created_at) {
+          const createdAt = new Date(audit.created_at).getTime();
+          const expiresAt = createdAt + 15 * 60 * 1000;
+          simulationExpiresAt = new Date(expiresAt).toISOString();
+          simulationValid = audit.status === "concluida"
+            && Number(audit.itens_falha) === 0
+            && Number.isFinite(createdAt)
+            && Date.now() <= expiresAt;
+        }
+      }
+
+      if (!writeScopeGranted) blockers.push("O aplicativo ainda nao possui o escopo write_products.");
+      if (!locationConfirmed) blockers.push("O local de estoque ainda nao foi confirmado.");
+      if (!links?.length) blockers.push("Nenhum vinculo ativo foi encontrado para esta loja.");
+      if (links && links.length > 500) blockers.push("A quantidade de vinculos excede o limite de seguranca.");
+      if (!safePilotLimit) blockers.push("O limite do piloto precisa permanecer em um item.");
+      if (!simulationValid) blockers.push("A simulacao precisa ser recente, concluida e sem falhas.");
+      if (!writeEnabled) blockers.push("O interruptor de escrita da loja permanece desligado.");
+
+      return jsonResponse({
+        modo: "verificacao_piloto",
+        store_id: storeId,
+        escopo_escrita: writeScopeGranted,
+        local_confirmado: locationConfirmed,
+        local_estoque: locationConfirmed
+          ? {
+            id: connection.local_estoque_id,
+            nome: connection.local_estoque_nome || "Local unico da Nuvemshop",
+          }
+          : null,
+        vinculos_ativos: links?.length || 0,
+        vinculos_dentro_limite: linksWithinLimit,
+        limite_itens: applicationLimit,
+        limite_seguro: safePilotLimit,
+        auditoria_id: requestedAuditId || null,
+        simulacao_valida: simulationValid,
+        simulacao_expira_em: simulationExpiresAt,
+        escrita_habilitada: writeEnabled,
+        requisitos_atendidos: writeScopeGranted
+          && locationConfirmed
+          && linksWithinLimit
+          && safePilotLimit
+          && simulationValid,
+        pronto_para_aplicar: blockers.length === 0,
+        bloqueios: blockers,
+        escrita_executada: false,
+      }, 200, { ...headers, "Cache-Control": "no-store" });
+    }
+
+    if (!connection.local_estoque_id) {
+      return jsonResponse({ error: "Local de estoque ainda nao confirmado." }, 409, headers);
+    }
     if (!links?.length) {
       return jsonResponse({ error: "Nenhum vinculo ativo para esta loja." }, 409, headers);
     }

@@ -18,6 +18,7 @@ let nuvemshopManualVoltage = null;
 let nuvemshopPreviewGenerated = false;
 let nuvemshopPreviewGeneratedAt = null;
 let nuvemshopServerSimulation = null;
+let nuvemshopPilotReadiness = null;
 let nuvemshopAuditRows = [];
 let nuvemshopAuditLoaded = false;
 let nuvemshopAuditUser = null;
@@ -727,6 +728,7 @@ async function loadNuvemshopCatalog(force = false) {
   tableWrap.style.display = 'none';
   pagination.style.display = 'none';
   nuvemshopServerSimulation = null;
+  nuvemshopPilotReadiness = null;
 
   try {
     const { data, error } = await sb.functions.invoke('nuvemshop-catalogo', { method: 'GET' });
@@ -977,9 +979,11 @@ function renderNuvemshopSyncPreview() {
   document.getElementById('nuvemshop-preview-uncontrolled').textContent = allRows.filter(row => row.previewStatus === 'uncontrolled').length;
 
   const simulationButton = document.getElementById('nuvemshop-simulation-open');
+  const pilotButton = document.getElementById('nuvemshop-pilot-open');
   const validationText = document.getElementById('nuvemshop-preview-validation');
   const canSimulate = nuvemshopStockLocation?.status === 'unico' && allRows.length > 0;
   simulationButton.disabled = !canSimulate;
+  pilotButton.disabled = !nuvemshopServerSimulation;
   if (nuvemshopServerSimulation) {
     const generatedAt = new Date(nuvemshopServerSimulation.gerado_em).toLocaleString('pt-BR');
     validationText.textContent = `Validada no servidor em ${generatedAt}. Nenhum estoque foi alterado.`;
@@ -1046,6 +1050,87 @@ function closeNuvemshopSimulationModal() {
   document.getElementById('nuvemshop-simulation-modal').classList.remove('open');
 }
 
+function openNuvemshopPilotModal() {
+  if (!nuvemshopServerSimulation?.auditoria_id) {
+    alert('Valide a previa no servidor antes de verificar o piloto.');
+    return;
+  }
+
+  document.getElementById('nuvemshop-pilot-summary').innerHTML =
+    `A verificacao usara a auditoria <strong>${escapeHtml(nuvemshopServerSimulation.auditoria_id)}</strong> como referencia.<br>` +
+    'Nenhum estoque sera alterado nesta etapa.';
+  const result = document.getElementById('nuvemshop-pilot-result');
+  result.className = 'nuvemshop-pilot-result';
+  result.innerHTML = '';
+  document.getElementById('nuvemshop-pilot-error').textContent = '';
+  const button = document.getElementById('nuvemshop-pilot-run');
+  button.disabled = false;
+  button.textContent = 'Verificar protecoes';
+  document.getElementById('nuvemshop-pilot-modal').classList.add('open');
+}
+
+function closeNuvemshopPilotModal() {
+  document.getElementById('nuvemshop-pilot-modal').classList.remove('open');
+}
+
+function renderNuvemshopPilotReadiness(data) {
+  const checks = [
+    { label: 'Simulacao recente', ok: data.simulacao_valida, value: data.simulacao_valida ? 'Valida' : 'Invalida' },
+    { label: 'Escopo de escrita', ok: data.escopo_escrita, value: data.escopo_escrita ? 'Autorizado' : 'Ausente' },
+    { label: 'Local de estoque', ok: data.local_confirmado, value: data.local_confirmado ? 'Confirmado' : 'Pendente' },
+    { label: 'Vinculos ativos', ok: data.vinculos_dentro_limite, value: String(data.vinculos_ativos ?? 0) },
+    { label: 'Limite do piloto', ok: data.limite_seguro, value: `${data.limite_itens ?? '-'} item` },
+    { label: 'Interruptor', ok: data.escrita_habilitada, value: data.escrita_habilitada ? 'Ligado' : 'Desligado' }
+  ];
+  const blockers = Array.isArray(data.bloqueios) ? data.bloqueios : [];
+  const result = document.getElementById('nuvemshop-pilot-result');
+  result.innerHTML = `<div class="nuvemshop-pilot-grid">
+    ${checks.map(check => `<div class="nuvemshop-pilot-check ${check.ok ? 'ok' : 'blocked'}">
+      <span>${escapeHtml(check.label)}</span>
+      <strong>${escapeHtml(check.value)}</strong>
+    </div>`).join('')}
+  </div>
+  <div class="nuvemshop-pilot-status ${data.pronto_para_aplicar ? 'ready' : 'blocked'}">
+    ${data.pronto_para_aplicar
+      ? 'Protecoes atendidas. A escrita continua indisponivel nesta versao do sistema.'
+      : 'Piloto bloqueado com seguranca. Nenhuma escrita foi executada.'}
+  </div>
+  ${blockers.length ? `<div class="nuvemshop-pilot-blockers">${blockers.map(blocker => `<div>${escapeHtml(blocker)}</div>`).join('')}</div>` : ''}`;
+  result.classList.add('visible');
+}
+
+async function runNuvemshopPilotReadiness() {
+  const button = document.getElementById('nuvemshop-pilot-run');
+  const errorElement = document.getElementById('nuvemshop-pilot-error');
+  button.disabled = true;
+  button.textContent = 'Verificando...';
+  errorElement.textContent = '';
+
+  try {
+    const { data, error } = await sb.functions.invoke('nuvemshop-sincronizacao', {
+      body: {
+        modo: 'verificar_piloto',
+        store_id: nuvemshopStoreId,
+        auditoria_id: nuvemshopServerSimulation?.auditoria_id
+      }
+    });
+    if (error) throw error;
+    if (data?.modo !== 'verificacao_piloto' || data?.escrita_executada !== false) {
+      throw new Error('O servidor retornou uma verificacao inesperada.');
+    }
+
+    nuvemshopPilotReadiness = data;
+    renderNuvemshopPilotReadiness(data);
+    showToast('Protecoes do piloto verificadas sem alterar estoques.');
+  } catch (error) {
+    console.error('Falha na verificacao do piloto Nuvemshop', error);
+    errorElement.textContent = error?.message || 'Nao foi possivel verificar as protecoes do piloto.';
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Executar novamente';
+  }
+}
+
 function renderNuvemshopSimulationResult(data) {
   const summary = data.resumo;
   const result = document.getElementById('nuvemshop-simulation-result');
@@ -1078,6 +1163,7 @@ async function runNuvemshopSimulation() {
     }
 
     nuvemshopServerSimulation = data;
+    nuvemshopPilotReadiness = null;
     renderNuvemshopSimulationResult(data);
     renderNuvemshopSyncPreview();
     nuvemshopAuditPage = 1;

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Estoque - Administração</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<link rel="stylesheet" href="css/admin.css?v=20260716-nuvemshop-paginacao-2">
+<link rel="stylesheet" href="css/admin.css?v=20260716-nuvemshop-piloto-1">
 </head>
 <body>
 
@@ -273,7 +273,10 @@
 
       <div class="nuvemshop-preview-actions">
         <span class="nuvemshop-preview-validation" id="nuvemshop-preview-validation">Previa ainda nao validada no servidor.</span>
-        <button class="btn-save" id="nuvemshop-simulation-open" onclick="openNuvemshopSimulationModal()" disabled>Validar no servidor</button>
+        <div class="filters-row">
+          <button class="btn-cancel" id="nuvemshop-pilot-open" onclick="openNuvemshopPilotModal()" disabled>Verificar piloto</button>
+          <button class="btn-save" id="nuvemshop-simulation-open" onclick="openNuvemshopSimulationModal()" disabled>Validar no servidor</button>
+        </div>
       </div>
 
       <div class="table-wrap">
@@ -457,6 +460,20 @@
   </div>
 </div>
 
+<!-- MODAL VERIFICACAO DO PILOTO NUVEMSHOP -->
+<div class="modal-overlay" id="nuvemshop-pilot-modal" onclick="if (event.target === this) closeNuvemshopPilotModal()">
+  <div class="modal nuvemshop-pilot-modal">
+    <div class="modal-title">Prontidao da aplicacao piloto</div>
+    <div class="nuvemshop-pilot-summary" id="nuvemshop-pilot-summary"></div>
+    <div class="nuvemshop-pilot-result" id="nuvemshop-pilot-result"></div>
+    <div class="baixa-error" id="nuvemshop-pilot-error"></div>
+    <div class="nuvemshop-manual-actions">
+      <button class="btn-save" id="nuvemshop-pilot-run" onclick="runNuvemshopPilotReadiness()">Verificar protecoes</button>
+      <button class="btn-cancel" onclick="closeNuvemshopPilotModal()">Fechar</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL EXCLUIR -->
 <div class="modal-overlay" id="delete-modal">
   <div class="modal">
@@ -554,6 +571,6 @@
 <div class="toast-stack" id="toast-stack"></div>
 
 <script src="js/supabase-config.js"></script>
-<script src="js/admin.js?v=20260716-nuvemshop-paginacao-2"></script>
+<script src="js/admin.js?v=20260716-nuvemshop-piloto-1"></script>
 </body>
 </html>
