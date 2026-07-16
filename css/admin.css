@@ -316,6 +316,23 @@
   .nuvemshop-simulation-result-item strong { display: block; margin-top: 5px; font-size: 18px; }
   .nuvemshop-simulation-safe { margin-top: 12px; color: var(--green); font-size: 12px; }
   .nuvemshop-simulation-audit { margin-top: 6px; color: var(--muted); font-size: 10px; overflow-wrap: anywhere; }
+  .nuvemshop-pilot-modal { max-width: 680px; }
+  .nuvemshop-pilot-summary { border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); padding: 14px 0; color: var(--muted); font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
+  .nuvemshop-pilot-summary strong { color: var(--text); }
+  .nuvemshop-pilot-result { display: none; margin-top: 16px; }
+  .nuvemshop-pilot-result.visible { display: block; }
+  .nuvemshop-pilot-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
+  .nuvemshop-pilot-check { min-width: 0; min-height: 72px; padding: 12px 8px; text-align: center; border-right: 1px solid var(--border); background: var(--surface2); }
+  .nuvemshop-pilot-check:last-child { border-right: 0; }
+  .nuvemshop-pilot-check span { display: block; color: var(--muted); font-size: 9px; text-transform: uppercase; }
+  .nuvemshop-pilot-check strong { display: block; margin-top: 7px; font-size: 13px; overflow-wrap: anywhere; }
+  .nuvemshop-pilot-check.ok strong { color: var(--green); }
+  .nuvemshop-pilot-check.blocked strong { color: var(--yellow); }
+  .nuvemshop-pilot-status { margin-top: 14px; border: 1px solid var(--border); border-radius: 4px; padding: 12px; font-size: 12px; }
+  .nuvemshop-pilot-status.ready { color: var(--green); border-color: rgba(34,197,94,.35); background: rgba(34,197,94,.08); }
+  .nuvemshop-pilot-status.blocked { color: var(--yellow); border-color: rgba(245,158,11,.35); background: rgba(245,158,11,.08); }
+  .nuvemshop-pilot-blockers { margin-top: 10px; color: var(--muted); font-size: 11px; line-height: 1.6; }
+  .nuvemshop-pilot-blockers > div::before { content: "- "; color: var(--yellow); }
   .nuvemshop-audit-section { margin-top: 32px; padding-top: 24px; border-top: 1px solid var(--border); }
   .nuvemshop-audit-subtitle { color: var(--muted); font-size: 11px; margin-top: 5px; }
   .nuvemshop-audit-table { min-width: 940px; }
@@ -386,6 +403,8 @@
     .nuvemshop-preview-actions { align-items: stretch; flex-direction: column; }
     .nuvemshop-simulation-result-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .nuvemshop-simulation-result-item { border-bottom: 1px solid var(--border); }
+    .nuvemshop-pilot-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .nuvemshop-pilot-check { border-bottom: 1px solid var(--border); }
     .nuvemshop-audit-section .filters-row { width: 100%; }
     .nuvemshop-audit-section .filter-select, .nuvemshop-audit-section .search-input { flex: 1; min-width: 150px; }
     .nuvemshop-pagination { align-items: stretch; flex-direction: column; }
