@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Estoque - Administração</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<link rel="stylesheet" href="css/admin.css?v=20260715-codigos-voltagem">
+<link rel="stylesheet" href="css/admin.css?v=20260716-nuvemshop-desvincular">
 </head>
 <body>
 
@@ -232,7 +232,7 @@
     <div class="section-header nuvemshop-heading">
       <div>
         <div class="section-title">Conferencia Nuvemshop</div>
-        <div class="nuvemshop-connection"><span></span> Conexao somente leitura</div>
+        <div class="nuvemshop-connection"><span></span> Nuvemshop somente leitura</div>
       </div>
       <button class="btn-save" id="nuvemshop-refresh-btn" onclick="loadNuvemshopCatalog(true)">Atualizar catalogo</button>
     </div>
@@ -260,7 +260,7 @@
     <div class="nuvemshop-message" id="nuvemshop-message">Abra esta aba para consultar o catalogo.</div>
     <div class="table-wrap" id="nuvemshop-table-wrap" style="display:none">
       <table>
-        <thead><tr><th>Status</th><th>Produto Nuvemshop</th><th>Variante</th><th>Codigos</th><th>Estoque Nuvemshop</th><th>Possivel produto local</th><th>Estoque local</th></tr></thead>
+        <thead><tr><th>Status</th><th>Produto Nuvemshop</th><th>Variante</th><th>Codigos</th><th>Estoque Nuvemshop</th><th>Possivel produto local</th><th>Estoque local</th><th>Acao</th></tr></thead>
         <tbody id="nuvemshop-tbody"></tbody>
       </table>
     </div>
@@ -359,6 +359,41 @@
   </div>
 </div>
 
+<!-- MODAL VINCULO MANUAL NUVEMSHOP -->
+<div class="modal-overlay" id="nuvemshop-manual-modal" onclick="if (event.target === this) closeManualNuvemshopLink()">
+  <div class="modal nuvemshop-manual-modal">
+    <div class="modal-title">Vincular produto manualmente</div>
+    <div class="nuvemshop-manual-remote" id="nuvemshop-manual-remote"></div>
+
+    <div class="form-field">
+      <label>Buscar produto local</label>
+      <input type="search" id="nuvemshop-manual-search" placeholder="Nome, codigo ou ID" oninput="renderManualNuvemshopProducts()">
+    </div>
+    <div class="form-field">
+      <label>Produto local *</label>
+      <select id="nuvemshop-manual-product" onchange="updateManualNuvemshopProduct()">
+        <option value="">Selecione...</option>
+      </select>
+    </div>
+
+    <div class="nuvemshop-manual-local" id="nuvemshop-manual-local">Selecione o produto local correspondente.</div>
+    <div class="form-field" id="nuvemshop-manual-voltage-wrap" style="display:none">
+      <label>Voltagem correspondente *</label>
+      <div class="nuvemshop-voltage-options">
+        <button type="button" data-voltage="110V" onclick="selectManualNuvemshopVoltage('110V')">110V</button>
+        <button type="button" data-voltage="220V" onclick="selectManualNuvemshopVoltage('220V')">220V</button>
+      </div>
+    </div>
+
+    <p class="nuvemshop-manual-note">O vinculo apenas associa os cadastros. Nenhum estoque sera alterado.</p>
+    <div class="baixa-error" id="nuvemshop-manual-error"></div>
+    <div class="nuvemshop-manual-actions">
+      <button class="btn-save" id="nuvemshop-manual-save" onclick="saveManualNuvemshopLink()">Confirmar vinculo</button>
+      <button class="btn-cancel" onclick="closeManualNuvemshopLink()">Cancelar</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL EXCLUIR VENDEDOR -->
 <div class="modal-overlay" id="delete-vendedor-modal">
   <div class="modal">
@@ -409,6 +444,6 @@
 <div class="toast-stack" id="toast-stack"></div>
 
 <script src="js/supabase-config.js"></script>
-<script src="js/admin.js?v=20260715-codigos-voltagem"></script>
+<script src="js/admin.js?v=20260716-nuvemshop-desvincular"></script>
 </body>
 </html>
