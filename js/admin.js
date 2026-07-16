@@ -12,6 +12,8 @@ let nuvemshopCatalogLoaded = false;
 let nuvemshopStoreId = null;
 let nuvemshopManualRow = null;
 let nuvemshopManualVoltage = null;
+let nuvemshopPreviewGenerated = false;
+let nuvemshopPreviewGeneratedAt = null;
 
 // Estado do painel de baixa
 let baixaProduto = null;
@@ -723,6 +725,7 @@ async function loadNuvemshopCatalog(force = false) {
     nuvemshopStoreId = data.store_id;
     nuvemshopCatalogRows = flattenNuvemshopCatalog(data.produtos, linksResult.data || []);
     nuvemshopCatalogLoaded = true;
+    if (nuvemshopPreviewGenerated) nuvemshopPreviewGeneratedAt = new Date();
     renderNuvemshopCatalog();
   } catch (error) {
     console.error('Falha ao consultar Nuvemshop', error);
@@ -758,6 +761,7 @@ function renderNuvemshopCatalog() {
   document.getElementById('nuvemshop-stat-matched').textContent = identified;
   document.getElementById('nuvemshop-stat-review').textContent = review;
   document.getElementById('nuvemshop-list-title').textContent = `Catalogo externo - loja ${nuvemshopStoreId || ''}`;
+  if (nuvemshopPreviewGenerated) renderNuvemshopSyncPreview();
 
   const message = document.getElementById('nuvemshop-message');
   const tableWrap = document.getElementById('nuvemshop-table-wrap');
@@ -804,6 +808,96 @@ function renderNuvemshopCatalog() {
       <td>${localDescription}</td>
       <td><span class="nuvemshop-stock">${escapeHtml(localStock)}</span></td>
       <td>${action}</td>
+    </tr>`;
+  }).join('');
+}
+
+function buildNuvemshopSyncPreviewRows() {
+  return nuvemshopCatalogRows
+    .filter(row => row.status === 'linked' && row.localProduct)
+    .map(row => {
+      const destinationStock = Number(row.localStock);
+      const currentStock = row.remoteStock == null ? null : Number(row.remoteStock);
+      const difference = currentStock == null ? null : destinationStock - currentStock;
+      const previewStatus = currentStock == null
+        ? 'uncontrolled'
+        : difference === 0
+          ? 'equal'
+          : difference > 0 ? 'increase' : 'decrease';
+      return { ...row, destinationStock, currentStock, difference, previewStatus };
+    })
+    .sort((a, b) => {
+      const priority = { increase: 0, decrease: 0, equal: 1, uncontrolled: 2 };
+      const priorityDifference = priority[a.previewStatus] - priority[b.previewStatus];
+      if (priorityDifference) return priorityDifference;
+      const absoluteDifference = Math.abs(b.difference || 0) - Math.abs(a.difference || 0);
+      return absoluteDifference || a.remoteName.localeCompare(b.remoteName, 'pt-BR');
+    });
+}
+
+async function openNuvemshopSyncPreview() {
+  if (!nuvemshopCatalogLoaded) await loadNuvemshopCatalog();
+  if (!nuvemshopCatalogLoaded) return;
+
+  nuvemshopPreviewGenerated = true;
+  nuvemshopPreviewGeneratedAt = new Date();
+  renderNuvemshopSyncPreview();
+  document.getElementById('nuvemshop-sync-preview').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function renderNuvemshopSyncPreview() {
+  if (!nuvemshopPreviewGenerated) return;
+  const section = document.getElementById('nuvemshop-sync-preview');
+  const allRows = buildNuvemshopSyncPreviewRows();
+  const statusFilter = document.getElementById('nuvemshop-preview-filter').value;
+  const search = normalizeCode(document.getElementById('nuvemshop-preview-search').value);
+  const filteredRows = allRows.filter(row => {
+    const matchesStatus = !statusFilter ||
+      (statusFilter === 'different' && ['increase', 'decrease'].includes(row.previewStatus)) ||
+      row.previewStatus === statusFilter;
+    const haystack = normalizeCode([
+      row.remoteName,
+      row.variantLabel,
+      row.sku,
+      row.barcode,
+      row.localProduct.nome,
+      row.localProduct.id,
+      row.linkVoltage
+    ].filter(Boolean).join(' '));
+    return matchesStatus && (!search || haystack.includes(search));
+  });
+
+  section.style.display = 'block';
+  document.getElementById('nuvemshop-preview-time').textContent = nuvemshopPreviewGeneratedAt
+    ? `Gerada em ${nuvemshopPreviewGeneratedAt.toLocaleString('pt-BR')}`
+    : '';
+  document.getElementById('nuvemshop-preview-total').textContent = allRows.length;
+  document.getElementById('nuvemshop-preview-equal').textContent = allRows.filter(row => row.previewStatus === 'equal').length;
+  document.getElementById('nuvemshop-preview-different').textContent = allRows.filter(row => ['increase', 'decrease'].includes(row.previewStatus)).length;
+  document.getElementById('nuvemshop-preview-uncontrolled').textContent = allRows.filter(row => row.previewStatus === 'uncontrolled').length;
+
+  const tbody = document.getElementById('nuvemshop-preview-tbody');
+  if (!filteredRows.length) {
+    tbody.innerHTML = '<tr><td colspan="5" class="empty-state">Nenhum produto vinculado encontrado para este filtro.</td></tr>';
+    return;
+  }
+
+  const statusLabels = {
+    equal: 'Sem alteracao',
+    increase: 'Aumentaria',
+    decrease: 'Reduziria',
+    uncontrolled: 'Ignorado'
+  };
+  tbody.innerHTML = filteredRows.map(row => {
+    const localLabel = row.linkVoltage ? `${row.localProduct.nome} - ${row.linkVoltage}` : row.localProduct.nome;
+    const currentStock = row.currentStock == null ? 'Ilimitado' : row.currentStock;
+    const difference = row.difference == null ? '-' : `${row.difference > 0 ? '+' : ''}${row.difference}`;
+    return `<tr>
+      <td><div class="nuvemshop-product-name">${escapeHtml(row.remoteName)}</div><div class="nuvemshop-variant">${escapeHtml(row.variantLabel)} | ${escapeHtml(localLabel)}</div></td>
+      <td><span class="nuvemshop-stock">${escapeHtml(currentStock)}</span></td>
+      <td><span class="nuvemshop-stock">${escapeHtml(row.destinationStock)}</span></td>
+      <td><span class="nuvemshop-preview-diff ${row.previewStatus}">${escapeHtml(difference)}</span></td>
+      <td><span class="nuvemshop-preview-status ${row.previewStatus}">${statusLabels[row.previewStatus]}</span></td>
     </tr>`;
   }).join('');
 }
@@ -855,6 +949,7 @@ async function confirmNuvemshopLink(productId, variantId) {
 
   row.status = 'linked';
   row.savedLinkId = data.id;
+  if (nuvemshopPreviewGenerated) nuvemshopPreviewGeneratedAt = new Date();
   renderNuvemshopCatalog();
   showToast('green', 'Vinculo Nuvemshop confirmado. Nenhum estoque foi alterado.');
 }
@@ -918,6 +1013,7 @@ async function unlinkNuvemshopLink(productId, variantId) {
   }
 
   restoreAutomaticNuvemshopMatch(row);
+  if (nuvemshopPreviewGenerated) nuvemshopPreviewGeneratedAt = new Date();
   renderNuvemshopCatalog();
   showToast('blue', 'Vinculo desfeito. Nenhum estoque foi alterado.');
 }
@@ -1062,6 +1158,7 @@ async function saveManualNuvemshopLink() {
   row.localStock = mappedLocalStock(localProduct, row.linkVoltage);
   row.savedLinkId = data.id;
   closeManualNuvemshopLink();
+  if (nuvemshopPreviewGenerated) nuvemshopPreviewGeneratedAt = new Date();
   renderNuvemshopCatalog();
   showToast('green', 'Vinculo manual confirmado. Nenhum estoque foi alterado.');
 }

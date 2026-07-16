@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Estoque - Administração</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<link rel="stylesheet" href="css/admin.css?v=20260716-nuvemshop-desvincular">
+<link rel="stylesheet" href="css/admin.css?v=20260716-nuvemshop-previa-sync">
 </head>
 <body>
 
@@ -234,7 +234,10 @@
         <div class="section-title">Conferencia Nuvemshop</div>
         <div class="nuvemshop-connection"><span></span> Nuvemshop somente leitura</div>
       </div>
-      <button class="btn-save" id="nuvemshop-refresh-btn" onclick="loadNuvemshopCatalog(true)">Atualizar catalogo</button>
+      <div class="filters-row">
+        <button class="btn-cancel" id="nuvemshop-preview-btn" onclick="openNuvemshopSyncPreview()">Gerar previa</button>
+        <button class="btn-save" id="nuvemshop-refresh-btn" onclick="loadNuvemshopCatalog(true)">Atualizar catalogo</button>
+      </div>
     </div>
 
     <div class="stats-grid nuvemshop-stats">
@@ -242,6 +245,38 @@
       <div class="stat-card"><div class="stat-label">Variantes Nuvemshop</div><div class="stat-value" id="nuvemshop-stat-remote">-</div></div>
       <div class="stat-card"><div class="stat-label">Identificados</div><div class="stat-value green" id="nuvemshop-stat-matched">-</div></div>
       <div class="stat-card"><div class="stat-label">Precisam de revisao</div><div class="stat-value yellow" id="nuvemshop-stat-review">-</div></div>
+    </div>
+
+    <div class="nuvemshop-sync-preview" id="nuvemshop-sync-preview" style="display:none">
+      <div class="section-header">
+        <div>
+          <div class="section-title">Previa de sincronizacao</div>
+          <div class="nuvemshop-preview-time" id="nuvemshop-preview-time"></div>
+        </div>
+        <div class="filters-row">
+          <select class="filter-select" id="nuvemshop-preview-filter" onchange="renderNuvemshopSyncPreview()">
+            <option value="">Todos os vinculados</option>
+            <option value="different">Com diferenca</option>
+            <option value="equal">Sem alteracao</option>
+            <option value="uncontrolled">Sem controle externo</option>
+          </select>
+          <input class="search-input" id="nuvemshop-preview-search" placeholder="Buscar na previa..." oninput="renderNuvemshopSyncPreview()">
+        </div>
+      </div>
+
+      <div class="stats-grid nuvemshop-preview-stats">
+        <div class="stat-card"><div class="stat-label">Vinculados</div><div class="stat-value" id="nuvemshop-preview-total">0</div></div>
+        <div class="stat-card"><div class="stat-label">Ja estao iguais</div><div class="stat-value green" id="nuvemshop-preview-equal">0</div></div>
+        <div class="stat-card"><div class="stat-label">Alterariam estoque</div><div class="stat-value yellow" id="nuvemshop-preview-different">0</div></div>
+        <div class="stat-card"><div class="stat-label">Sem controle externo</div><div class="stat-value" id="nuvemshop-preview-uncontrolled">0</div></div>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Produto vinculado</th><th>Nuvemshop atual</th><th>Destino Nuvemshop</th><th>Diferenca</th><th>Resultado previsto</th></tr></thead>
+          <tbody id="nuvemshop-preview-tbody"></tbody>
+        </table>
+      </div>
     </div>
 
     <div class="section-header">
@@ -444,6 +479,6 @@
 <div class="toast-stack" id="toast-stack"></div>
 
 <script src="js/supabase-config.js"></script>
-<script src="js/admin.js?v=20260716-nuvemshop-desvincular"></script>
+<script src="js/admin.js?v=20260716-nuvemshop-previa-sync"></script>
 </body>
 </html>
