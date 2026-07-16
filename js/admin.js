@@ -16,6 +16,10 @@ let nuvemshopManualVoltage = null;
 let nuvemshopPreviewGenerated = false;
 let nuvemshopPreviewGeneratedAt = null;
 let nuvemshopServerSimulation = null;
+let nuvemshopAuditRows = [];
+let nuvemshopAuditLoaded = false;
+let nuvemshopAuditUser = null;
+const nuvemshopExpandedAudits = new Set();
 
 // Estado do painel de baixa
 let baixaProduto = null;
@@ -1001,6 +1005,7 @@ async function runNuvemshopSimulation() {
     nuvemshopServerSimulation = data;
     renderNuvemshopSimulationResult(data);
     renderNuvemshopSyncPreview();
+    loadNuvemshopAuditHistory(true);
     showToast('Previa validada no servidor sem alterar estoques.');
   } catch (error) {
     console.error('Falha na validacao segura da Nuvemshop', error);
@@ -1009,6 +1014,205 @@ async function runNuvemshopSimulation() {
     button.disabled = false;
     button.textContent = 'Executar novamente';
   }
+}
+
+function formatNuvemshopAuditDate(value) {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '-';
+  return date.toLocaleString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+}
+
+function nuvemshopAuditStatusLabel(status) {
+  return ({
+    preparando: 'Preparando',
+    processando: 'Processando',
+    concluida: 'Concluida',
+    parcial: 'Parcial',
+    falhou: 'Falhou',
+    cancelada: 'Cancelada'
+  })[status] || status || '-';
+}
+
+function nuvemshopAuditResultLabel(result) {
+  return ({
+    igual: 'Sem alteracao',
+    alteraria: 'Alteraria',
+    sem_controle: 'Sem controle',
+    erro: 'Erro'
+  })[result] || result || '-';
+}
+
+function nuvemshopAuditRequester(row) {
+  if (nuvemshopAuditUser?.id === row.solicitado_por) {
+    return nuvemshopAuditUser.email || 'Administrador atual';
+  }
+  return `Administrador ${String(row.solicitado_por || '').slice(0, 8)}`;
+}
+
+async function loadNuvemshopAuditHistory(force = false) {
+  if (nuvemshopAuditLoaded && !force) return;
+
+  const button = document.getElementById('nuvemshop-audit-refresh');
+  const message = document.getElementById('nuvemshop-audit-message');
+  const tableWrap = document.getElementById('nuvemshop-audit-table-wrap');
+  if (!button || !message || !tableWrap) return;
+
+  button.disabled = true;
+  button.textContent = 'Consultando...';
+  message.className = 'nuvemshop-message';
+  message.textContent = 'Consultando historico de validacoes...';
+  message.style.display = 'flex';
+  tableWrap.style.display = 'none';
+
+  try {
+    const [historyResult, userResult] = await Promise.all([
+      sb.from('nuvemshop_sincronizacoes')
+        .select('id, chave_operacao, store_id, local_estoque_id, modo, status, solicitado_por, total_itens, itens_sucesso, itens_falha, iniciado_em, concluido_em, erro, created_at')
+        .order('created_at', { ascending: false })
+        .limit(30),
+      sb.auth.getUser()
+    ]);
+    if (historyResult.error) throw historyResult.error;
+
+    const histories = historyResult.data || [];
+    const historyIds = histories.map(row => row.id);
+    let items = [];
+    if (historyIds.length) {
+      const itemsResult = await sb.from('nuvemshop_sincronizacao_itens')
+        .select('id, sincronizacao_id, produto_id, voltagem, nuvemshop_produto_id, nuvemshop_variante_id, estoque_anterior, estoque_destino, resultado_previsto, diferenca, status, erro, processado_em')
+        .in('sincronizacao_id', historyIds)
+        .order('id', { ascending: true });
+      if (itemsResult.error) throw itemsResult.error;
+      items = itemsResult.data || [];
+    }
+
+    nuvemshopAuditUser = userResult.data?.user || null;
+    nuvemshopAuditRows = histories.map(history => ({
+      ...history,
+      items: items.filter(item => item.sincronizacao_id === history.id)
+    }));
+    nuvemshopAuditLoaded = true;
+    renderNuvemshopAuditHistory();
+  } catch (error) {
+    console.error('Falha ao consultar historico Nuvemshop', error);
+    message.className = 'nuvemshop-message error';
+    message.textContent = 'Nao foi possivel consultar o historico de validacoes.';
+    message.style.display = 'flex';
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Atualizar';
+  }
+}
+
+function nuvemshopAuditItemMatches(item, search) {
+  const product = products.find(candidate => candidate.id === item.produto_id);
+  return normalizeCode(`${product?.nome || ''} ${item.produto_id} ${item.voltagem || ''}`).includes(search);
+}
+
+function nuvemshopAuditMetadataTerms(row) {
+  return normalizeCode([
+    row.id,
+    row.store_id,
+    row.status,
+    row.modo,
+    formatNuvemshopAuditDate(row.created_at),
+    nuvemshopAuditRequester(row)
+  ].join(' '));
+}
+
+function buildNuvemshopAuditItems(row) {
+  if (!row.items.length) {
+    return '<div class="nuvemshop-audit-empty">Esta auditoria nao possui itens gravados.</div>';
+  }
+
+  const search = normalizeCode(document.getElementById('nuvemshop-audit-search')?.value || '');
+  const filterItems = search && !nuvemshopAuditMetadataTerms(row).includes(search);
+  const visibleItems = filterItems
+    ? row.items.filter(item => nuvemshopAuditItemMatches(item, search))
+    : row.items;
+  const countMessage = filterItems
+    ? `<div class="nuvemshop-audit-filter-count">${visibleItems.length} de ${row.items.length} itens exibidos</div>`
+    : '';
+
+  return `<div class="nuvemshop-audit-items-wrap">
+    ${countMessage}
+    <table class="nuvemshop-audit-items-table">
+      <thead><tr><th>Produto local</th><th>Voltagem</th><th>Estoque anterior</th><th>Destino previsto</th><th>Diferenca</th><th>Resultado</th></tr></thead>
+      <tbody>${visibleItems.map(item => {
+        const product = products.find(candidate => candidate.id === item.produto_id);
+        const productName = product?.nome || `Produto #${item.produto_id}`;
+        const difference = item.diferenca == null ? '-' : `${item.diferenca > 0 ? '+' : ''}${item.diferenca}`;
+        const resultClass = item.resultado_previsto || 'erro';
+        return `<tr>
+          <td><strong>${escapeHtml(productName)}</strong><div class="nuvemshop-local-meta">ID ${escapeHtml(item.produto_id)}</div></td>
+          <td>${escapeHtml(item.voltagem || 'Unica')}</td>
+          <td>${escapeHtml(item.estoque_anterior ?? '-')}</td>
+          <td>${escapeHtml(item.estoque_destino ?? '-')}</td>
+          <td><strong class="nuvemshop-audit-difference ${escapeHtml(resultClass)}">${escapeHtml(difference)}</strong></td>
+          <td><span class="nuvemshop-audit-item-result ${escapeHtml(resultClass)}">${escapeHtml(nuvemshopAuditResultLabel(item.resultado_previsto))}</span>${item.erro ? `<div class="nuvemshop-audit-item-error">${escapeHtml(item.erro)}</div>` : ''}</td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table>
+  </div>`;
+}
+
+function renderNuvemshopAuditHistory() {
+  const message = document.getElementById('nuvemshop-audit-message');
+  const tableWrap = document.getElementById('nuvemshop-audit-table-wrap');
+  const tbody = document.getElementById('nuvemshop-audit-tbody');
+  if (!message || !tableWrap || !tbody || !nuvemshopAuditLoaded) return;
+
+  const filter = document.getElementById('nuvemshop-audit-filter')?.value || '';
+  const search = normalizeCode(document.getElementById('nuvemshop-audit-search')?.value || '');
+  const filtered = nuvemshopAuditRows.filter(row => {
+    const hasFailure = row.status === 'falhou' || row.status === 'parcial' || row.itens_falha > 0;
+    const matchesFilter = !filter || row.modo === filter || (filter === 'falha' && hasFailure);
+    const matchesMetadata = !search || nuvemshopAuditMetadataTerms(row).includes(search);
+    const matchesItem = !search || row.items.some(item => nuvemshopAuditItemMatches(item, search));
+    return matchesFilter && (matchesMetadata || matchesItem);
+  });
+
+  if (!filtered.length) {
+    tbody.innerHTML = '';
+    tableWrap.style.display = 'none';
+    message.className = 'nuvemshop-message';
+    message.textContent = nuvemshopAuditRows.length
+      ? 'Nenhuma validacao corresponde aos filtros escolhidos.'
+      : 'Nenhuma validacao foi registrada ainda.';
+    message.style.display = 'flex';
+    return;
+  }
+
+  message.style.display = 'none';
+  tableWrap.style.display = 'block';
+  tbody.innerHTML = filtered.map(row => {
+    const expanded = nuvemshopExpandedAudits.has(row.id);
+    const statusClass = ['concluida', 'parcial', 'falhou', 'cancelada'].includes(row.status) ? row.status : 'processando';
+    const modeLabel = row.modo === 'simulacao' ? 'Simulacao' : 'Aplicacao';
+    return `<tr class="nuvemshop-audit-row">
+      <td><strong>${escapeHtml(formatNuvemshopAuditDate(row.created_at))}</strong><div class="nuvemshop-local-meta">${escapeHtml(String(row.id).slice(0, 8))}</div></td>
+      <td><span class="nuvemshop-audit-mode ${escapeHtml(row.modo)}">${escapeHtml(modeLabel)}</span></td>
+      <td><strong>${escapeHtml(row.store_id)}</strong><div class="nuvemshop-local-meta">${escapeHtml(row.local_estoque_id || 'Local nao informado')}</div></td>
+      <td><strong>${escapeHtml(row.total_itens)}</strong><div class="nuvemshop-local-meta">${escapeHtml(row.itens_sucesso)} ok · ${escapeHtml(row.itens_falha)} falhas</div></td>
+      <td><span class="nuvemshop-audit-status ${escapeHtml(statusClass)}">${escapeHtml(nuvemshopAuditStatusLabel(row.status))}</span>${row.erro ? `<div class="nuvemshop-audit-item-error">${escapeHtml(row.erro)}</div>` : ''}</td>
+      <td>${escapeHtml(nuvemshopAuditRequester(row))}</td>
+      <td><button class="nuvemshop-audit-toggle" onclick="toggleNuvemshopAudit('${escapeHtml(row.id)}')" aria-expanded="${expanded}">${expanded ? 'Ocultar' : 'Detalhes'}</button></td>
+    </tr>
+    ${expanded ? `<tr class="nuvemshop-audit-detail-row"><td colspan="7">${buildNuvemshopAuditItems(row)}</td></tr>` : ''}`;
+  }).join('');
+}
+
+function toggleNuvemshopAudit(id) {
+  if (nuvemshopExpandedAudits.has(id)) nuvemshopExpandedAudits.delete(id);
+  else nuvemshopExpandedAudits.add(id);
+  renderNuvemshopAuditHistory();
 }
 
 async function confirmNuvemshopLink(productId, variantId) {
@@ -2179,7 +2383,10 @@ function switchTab(name) {
   document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('active', ['dashboard','produtos','nuvemshop','vendedores','historico'][i] === name));
   document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
   document.getElementById(`tab-${name}`).classList.add('active');
-  if (name === 'nuvemshop') loadNuvemshopCatalog();
+  if (name === 'nuvemshop') {
+    loadNuvemshopCatalog();
+    loadNuvemshopAuditHistory();
+  }
 }
 
 document.getElementById('login-pass').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
