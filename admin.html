@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Estoque - Administração</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<link rel="stylesheet" href="css/admin.css?v=20260716-nuvemshop-locais-2">
+<link rel="stylesheet" href="css/admin.css?v=20260716-nuvemshop-simulacao-1">
 </head>
 <body>
 
@@ -271,6 +271,11 @@
         <div class="stat-card"><div class="stat-label">Sem controle externo</div><div class="stat-value" id="nuvemshop-preview-uncontrolled">0</div></div>
       </div>
 
+      <div class="nuvemshop-preview-actions">
+        <span class="nuvemshop-preview-validation" id="nuvemshop-preview-validation">Previa ainda nao validada no servidor.</span>
+        <button class="btn-save" id="nuvemshop-simulation-open" onclick="openNuvemshopSimulationModal()" disabled>Validar no servidor</button>
+      </div>
+
       <div class="table-wrap">
         <table>
           <thead><tr><th>Produto vinculado</th><th>Nuvemshop atual</th><th>Destino Nuvemshop</th><th>Diferenca</th><th>Resultado previsto</th></tr></thead>
@@ -382,6 +387,20 @@
   </div>
 </div>
 
+<!-- MODAL SIMULACAO SEGURA NUVEMSHOP -->
+<div class="modal-overlay" id="nuvemshop-simulation-modal" onclick="if (event.target === this) closeNuvemshopSimulationModal()">
+  <div class="modal nuvemshop-simulation-modal">
+    <div class="modal-title">Validar previa no servidor</div>
+    <div class="nuvemshop-simulation-summary" id="nuvemshop-simulation-summary"></div>
+    <div class="nuvemshop-simulation-result" id="nuvemshop-simulation-result"></div>
+    <div class="baixa-error" id="nuvemshop-simulation-error"></div>
+    <div class="nuvemshop-manual-actions">
+      <button class="btn-save" id="nuvemshop-simulation-run" onclick="runNuvemshopSimulation()">Executar validacao</button>
+      <button class="btn-cancel" onclick="closeNuvemshopSimulationModal()">Fechar</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL EXCLUIR -->
 <div class="modal-overlay" id="delete-modal">
   <div class="modal">
@@ -479,6 +498,6 @@
 <div class="toast-stack" id="toast-stack"></div>
 
 <script src="js/supabase-config.js"></script>
-<script src="js/admin.js?v=20260716-nuvemshop-locais-2"></script>
+<script src="js/admin.js?v=20260716-nuvemshop-simulacao-1"></script>
 </body>
 </html>

@@ -15,6 +15,7 @@ let nuvemshopManualRow = null;
 let nuvemshopManualVoltage = null;
 let nuvemshopPreviewGenerated = false;
 let nuvemshopPreviewGeneratedAt = null;
+let nuvemshopServerSimulation = null;
 
 // Estado do painel de baixa
 let baixaProduto = null;
@@ -713,6 +714,7 @@ async function loadNuvemshopCatalog(force = false) {
   message.textContent = 'Consultando catalogo da Nuvemshop...';
   message.style.display = 'flex';
   tableWrap.style.display = 'none';
+  nuvemshopServerSimulation = null;
 
   try {
     const { data, error } = await sb.functions.invoke('nuvemshop-catalogo', { method: 'GET' });
@@ -895,6 +897,21 @@ function renderNuvemshopSyncPreview() {
   document.getElementById('nuvemshop-preview-different').textContent = allRows.filter(row => ['increase', 'decrease'].includes(row.previewStatus)).length;
   document.getElementById('nuvemshop-preview-uncontrolled').textContent = allRows.filter(row => row.previewStatus === 'uncontrolled').length;
 
+  const simulationButton = document.getElementById('nuvemshop-simulation-open');
+  const validationText = document.getElementById('nuvemshop-preview-validation');
+  const canSimulate = nuvemshopStockLocation?.status === 'unico' && allRows.length > 0;
+  simulationButton.disabled = !canSimulate;
+  if (nuvemshopServerSimulation) {
+    const generatedAt = new Date(nuvemshopServerSimulation.gerado_em).toLocaleString('pt-BR');
+    validationText.textContent = `Validada no servidor em ${generatedAt}. Nenhum estoque foi alterado.`;
+    validationText.classList.add('valid');
+  } else {
+    validationText.textContent = canSimulate
+      ? 'Previa ainda nao validada no servidor.'
+      : 'Confirme o local e os vinculos antes da validacao.';
+    validationText.classList.remove('valid');
+  }
+
   const tbody = document.getElementById('nuvemshop-preview-tbody');
   if (!filteredRows.length) {
     tbody.innerHTML = '<tr><td colspan="5" class="empty-state">Nenhum produto vinculado encontrado para este filtro.</td></tr>';
@@ -919,6 +936,78 @@ function renderNuvemshopSyncPreview() {
       <td><span class="nuvemshop-preview-status ${row.previewStatus}">${statusLabels[row.previewStatus]}</span></td>
     </tr>`;
   }).join('');
+}
+
+function openNuvemshopSimulationModal() {
+  const rows = buildNuvemshopSyncPreviewRows();
+  if (!nuvemshopPreviewGenerated || !rows.length) {
+    alert('Gere uma previa com produtos vinculados antes de validar.');
+    return;
+  }
+  if (nuvemshopStockLocation?.status !== 'unico') {
+    alert('O local de estoque precisa estar confirmado antes da validacao.');
+    return;
+  }
+
+  const different = rows.filter(row => ['increase', 'decrease'].includes(row.previewStatus)).length;
+  const uncontrolled = rows.filter(row => row.previewStatus === 'uncontrolled').length;
+  document.getElementById('nuvemshop-simulation-summary').innerHTML =
+    `<strong>${rows.length} vinculos</strong> serao recalculados diretamente no servidor.<br>` +
+    `${different} aparecem com diferenca e ${uncontrolled} estao sem controle externo na previa atual.`;
+  document.getElementById('nuvemshop-simulation-result').className = 'nuvemshop-simulation-result';
+  document.getElementById('nuvemshop-simulation-result').innerHTML = '';
+  document.getElementById('nuvemshop-simulation-error').textContent = '';
+  const button = document.getElementById('nuvemshop-simulation-run');
+  button.disabled = false;
+  button.textContent = 'Executar validacao';
+  document.getElementById('nuvemshop-simulation-modal').classList.add('open');
+}
+
+function closeNuvemshopSimulationModal() {
+  document.getElementById('nuvemshop-simulation-modal').classList.remove('open');
+}
+
+function renderNuvemshopSimulationResult(data) {
+  const summary = data.resumo;
+  const result = document.getElementById('nuvemshop-simulation-result');
+  result.innerHTML = `<div class="nuvemshop-simulation-result-grid">
+    <div class="nuvemshop-simulation-result-item"><span>Vinculados</span><strong>${escapeHtml(summary.vinculados)}</strong></div>
+    <div class="nuvemshop-simulation-result-item"><span>Iguais</span><strong>${escapeHtml(summary.iguais)}</strong></div>
+    <div class="nuvemshop-simulation-result-item"><span>Alterariam</span><strong>${escapeHtml(summary.alterariam)}</strong></div>
+    <div class="nuvemshop-simulation-result-item"><span>Sem controle</span><strong>${escapeHtml(summary.sem_controle)}</strong></div>
+    <div class="nuvemshop-simulation-result-item"><span>Erros</span><strong>${escapeHtml(summary.erros)}</strong></div>
+  </div>
+  <div class="nuvemshop-simulation-safe">Validacao concluida em modo seguro. Nenhum estoque foi alterado.</div>`;
+  result.classList.add('visible');
+}
+
+async function runNuvemshopSimulation() {
+  const button = document.getElementById('nuvemshop-simulation-run');
+  const errorElement = document.getElementById('nuvemshop-simulation-error');
+  button.disabled = true;
+  button.textContent = 'Validando...';
+  errorElement.textContent = '';
+
+  try {
+    const { data, error } = await sb.functions.invoke('nuvemshop-sincronizacao', {
+      body: { modo: 'simular', store_id: nuvemshopStoreId }
+    });
+    if (error) throw error;
+    if (data?.modo !== 'simulacao' || data?.escrita_habilitada !== false || !data?.resumo) {
+      throw new Error('O servidor retornou uma validacao inesperada.');
+    }
+
+    nuvemshopServerSimulation = data;
+    renderNuvemshopSimulationResult(data);
+    renderNuvemshopSyncPreview();
+    showToast('Previa validada no servidor sem alterar estoques.');
+  } catch (error) {
+    console.error('Falha na validacao segura da Nuvemshop', error);
+    errorElement.textContent = error?.message || 'Nao foi possivel validar a previa no servidor.';
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Executar novamente';
+  }
 }
 
 async function confirmNuvemshopLink(productId, variantId) {
