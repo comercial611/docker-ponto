@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Estoque - Administração</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<link rel="stylesheet" href="css/admin.css?v=20260716-nuvemshop-previa-sync">
+<link rel="stylesheet" href="css/admin.css?v=20260716-nuvemshop-locais-2">
 </head>
 <body>
 
@@ -232,7 +232,7 @@
     <div class="section-header nuvemshop-heading">
       <div>
         <div class="section-title">Conferencia Nuvemshop</div>
-        <div class="nuvemshop-connection"><span></span> Nuvemshop somente leitura</div>
+        <div class="nuvemshop-connection"><span class="nuvemshop-connection-dot"></span> <span id="nuvemshop-connection-text">Nuvemshop somente leitura</span></div>
       </div>
       <div class="filters-row">
         <button class="btn-cancel" id="nuvemshop-preview-btn" onclick="openNuvemshopSyncPreview()">Gerar previa</button>
@@ -479,6 +479,6 @@
 <div class="toast-stack" id="toast-stack"></div>
 
 <script src="js/supabase-config.js"></script>
-<script src="js/admin.js?v=20260716-nuvemshop-previa-sync"></script>
+<script src="js/admin.js?v=20260716-nuvemshop-locais-2"></script>
 </body>
 </html>
