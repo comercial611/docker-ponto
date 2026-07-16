@@ -188,6 +188,9 @@ Deno.serve(async (request) => {
       } else if (destinationStock === null || destinationStock < 0) {
         status = "erro";
         error = "Estoque local invalido.";
+      } else if (currentStock !== null && currentStock < 0) {
+        status = "erro";
+        error = "Estoque externo invalido.";
       } else if (currentStock === null) {
         status = "sem_controle";
       } else if (currentStock === destinationStock) {
@@ -219,16 +222,34 @@ Deno.serve(async (request) => {
       erros: items.filter((item) => item.status === "erro").length,
     };
 
+    const operationId = crypto.randomUUID();
+    const generatedAt = new Date().toISOString();
+    const { data: auditId, error: auditError } = await supabaseAdmin.rpc(
+      "registrar_auditoria_simulacao_nuvemshop",
+      {
+        p_chave_operacao: operationId,
+        p_store_id: storeId,
+        p_local_estoque_id: connection.local_estoque_id,
+        p_solicitado_por: userResult.data.user.id,
+        p_itens: items,
+      },
+    );
+    if (auditError || !auditId) {
+      console.error("Falha ao registrar auditoria", auditError?.message || "ID ausente");
+      throw new Error("A simulacao foi calculada, mas a auditoria nao foi registrada.");
+    }
+
     return jsonResponse({
       modo: "simulacao",
-      operacao_id: crypto.randomUUID(),
+      operacao_id: operationId,
+      auditoria_id: auditId,
       store_id: storeId,
       local_estoque: {
         id: connection.local_estoque_id,
         nome: connection.local_estoque_nome || "Local unico da Nuvemshop",
       },
       solicitado_por: userResult.data.user.id,
-      gerado_em: new Date().toISOString(),
+      gerado_em: generatedAt,
       resumo: summary,
       itens: items,
       escrita_habilitada: false,

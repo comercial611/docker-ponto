@@ -308,6 +308,7 @@
   .nuvemshop-simulation-result-item span { display: block; color: var(--muted); font-size: 9px; text-transform: uppercase; }
   .nuvemshop-simulation-result-item strong { display: block; margin-top: 5px; font-size: 18px; }
   .nuvemshop-simulation-safe { margin-top: 12px; color: var(--green); font-size: 12px; }
+  .nuvemshop-simulation-audit { margin-top: 6px; color: var(--muted); font-size: 10px; overflow-wrap: anywhere; }
 
   /* PAINEL LATERAL DE BAIXA */
   .side-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 200; }
