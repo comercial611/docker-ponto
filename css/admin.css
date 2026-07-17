@@ -333,6 +333,13 @@
   .nuvemshop-pilot-status.blocked { color: var(--yellow); border-color: rgba(245,158,11,.35); background: rgba(245,158,11,.08); }
   .nuvemshop-pilot-blockers { margin-top: 10px; color: var(--muted); font-size: 11px; line-height: 1.6; }
   .nuvemshop-pilot-blockers > div::before { content: "- "; color: var(--yellow); }
+  .nuvemshop-pilot-window { display: none; margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--border); }
+  .nuvemshop-pilot-window.visible { display: block; }
+  .nuvemshop-pilot-window-copy { color: var(--muted); font-size: 11px; line-height: 1.5; }
+  .nuvemshop-pilot-window-status { margin-top: 9px; color: var(--muted); font-size: 11px; line-height: 1.5; }
+  .nuvemshop-pilot-window-status.ready { color: var(--yellow); }
+  .nuvemshop-pilot-window-status.active { color: var(--green); }
+  .nuvemshop-pilot-window .nuvemshop-manual-actions { margin-top: 12px; }
   .nuvemshop-pilot-application { display: none; margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--border); }
   .nuvemshop-pilot-application.visible { display: block; }
   .nuvemshop-pilot-application-title { margin-bottom: 10px; font-size: 13px; font-weight: 700; }

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Estoque - Administração</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<link rel="stylesheet" href="css/admin.css?v=20260717-nuvemshop-piloto-2">
+<link rel="stylesheet" href="css/admin.css?v=20260717-nuvemshop-piloto-real-3">
 </head>
 <body>
 
@@ -466,6 +466,21 @@
     <div class="modal-title">Prontidao da aplicacao piloto</div>
     <div class="nuvemshop-pilot-summary" id="nuvemshop-pilot-summary"></div>
     <div class="nuvemshop-pilot-result" id="nuvemshop-pilot-result"></div>
+    <div class="nuvemshop-pilot-window" id="nuvemshop-pilot-window">
+      <div class="nuvemshop-pilot-application-title">Janela temporaria de escrita</div>
+      <div class="nuvemshop-pilot-window-copy">
+        A liberacao dura no maximo cinco minutos e sera encerrada depois da primeira tentativa.
+      </div>
+      <div class="form-field nuvemshop-pilot-confirmation">
+        <label for="nuvemshop-pilot-window-confirmation">Confirmacao para liberar</label>
+        <input id="nuvemshop-pilot-window-confirmation" type="text" autocomplete="off" spellcheck="false" oninput="updateNuvemshopPilotWindowButtons()">
+      </div>
+      <div class="nuvemshop-pilot-window-status" id="nuvemshop-pilot-window-status"></div>
+      <div class="nuvemshop-manual-actions">
+        <button class="btn-save" id="nuvemshop-pilot-window-enable" onclick="runNuvemshopPilotWindow(true)" disabled>Liberar por 5 min</button>
+        <button class="btn-cancel" id="nuvemshop-pilot-window-disable" onclick="runNuvemshopPilotWindow(false)" disabled>Desligar agora</button>
+      </div>
+    </div>
     <div class="nuvemshop-pilot-application" id="nuvemshop-pilot-application">
       <div class="nuvemshop-pilot-application-title">Selecionar item do piloto</div>
       <div class="nuvemshop-pilot-items" id="nuvemshop-pilot-items"></div>
@@ -582,6 +597,6 @@
 <div class="toast-stack" id="toast-stack"></div>
 
 <script src="js/supabase-config.js"></script>
-<script src="js/admin.js?v=20260717-nuvemshop-piloto-2"></script>
+<script src="js/admin.js?v=20260717-nuvemshop-piloto-real-3"></script>
 </body>
 </html>

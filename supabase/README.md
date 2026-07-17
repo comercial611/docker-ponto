@@ -26,6 +26,7 @@ Esta pasta documenta a configuracao de seguranca usada no Supabase de producao.
 20. `20-auditoria-simulacao-nuvemshop.sql`
 21. `21-trava-aplicacao-piloto-nuvemshop.sql`
 22. `22-reserva-aplicacao-piloto-nuvemshop.sql`
+23. `23-janela-temporaria-piloto-nuvemshop.sql`
 
 ## O que foi protegido
 
@@ -63,10 +64,11 @@ Esta pasta documenta a configuracao de seguranca usada no Supabase de producao.
 - `20-auditoria-simulacao-nuvemshop.sql`: identifica simulacoes na auditoria e cria a funcao atomica usada pela Edge Function para registrar o resumo e todos os itens validados.
 - `21-trava-aplicacao-piloto-nuvemshop.sql`: adiciona o interruptor de escrita por loja, iniciado desligado, e limita o primeiro piloto a um item.
 - `22-reserva-aplicacao-piloto-nuvemshop.sql`: vincula uma aplicacao a uma simulacao recente, reserva somente um item, bloqueia repeticao e registra o resultado confirmado pelo servidor.
+- `23-janela-temporaria-piloto-nuvemshop.sql`: troca o interruptor manual por uma janela auditada de cinco minutos, bloqueia aplicacoes fora do prazo e desliga a escrita depois da primeira tentativa.
 - `functions/nuvemshop-oauth`: conclui a instalacao OAuth e salva o token criptografado, sem exibir a credencial.
 - `functions/nuvemshop-lgpd`: recebe os tres webhooks obrigatorios de privacidade e valida a assinatura da Nuvemshop.
 - `functions/nuvemshop-catalogo`: consulta o catalogo e os locais de estoque da Nuvemshop somente para administradores, sem alterar o estoque externo.
-- `functions/nuvemshop-sincronizacao`: recalcula a previa, verifica as protecoes e prepara a aplicacao auditada de um unico item; a escrita continua bloqueada enquanto faltarem o escopo e a liberacao explicita da loja.
+- `functions/nuvemshop-sincronizacao`: recalcula a previa, verifica as protecoes e aplica um unico item somente durante uma janela temporaria confirmada; a escrita continua bloqueada enquanto faltarem o escopo e a liberacao explicita da loja.
 - `rollback-segundo-admin-principal.sql`: devolve o login vendas4 ao perfil funcionario em caso de necessidade.
 - `rollback-policies-abertas.sql`: volta para as policies antigas em caso de emergencia.
 

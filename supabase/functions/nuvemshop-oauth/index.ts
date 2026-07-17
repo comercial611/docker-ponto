@@ -74,6 +74,11 @@ Deno.serve(async (request) => {
     const tokenData = await tokenResponse.json();
     const accessToken = String(tokenData.access_token || "").trim();
     const storeId = Number(tokenData.user_id);
+    const scopes = tokenData.scope ? String(tokenData.scope) : "read_products";
+    const writeProductsGranted = scopes
+      .split(/[\s,]+/)
+      .map((scope) => scope.trim().toLowerCase())
+      .includes("write_products");
     if (!accessToken || !Number.isSafeInteger(storeId) || storeId <= 0) {
       throw new Error("Resposta OAuth sem token ou identificacao da loja.");
     }
@@ -86,14 +91,21 @@ Deno.serve(async (request) => {
       store_id: storeId,
       token_cifrado: encrypted.cipherText,
       token_iv: encrypted.iv,
-      escopos: tokenData.scope ? String(tokenData.scope) : "read_products",
+      escopos: scopes,
       conectado_em: new Date().toISOString(),
+      escrita_habilitada: false,
+      escrita_habilitada_em: null,
+      escrita_habilitada_por: null,
+      escrita_habilitada_ate: null,
+      escrita_simulacao_id: null,
     });
     if (error) throw error;
 
     return htmlPage(
       "Nuvemshop conectada",
-      "A autorizacao foi concluida com acesso somente de leitura. Voce ja pode fechar esta pagina.",
+      writeProductsGranted
+        ? "A autorizacao de leitura e escrita foi concluida. A escrita permanece bloqueada ate um administrador abrir a janela temporaria do piloto."
+        : "A autorizacao foi concluida com acesso somente de leitura. Voce ja pode fechar esta pagina.",
       true,
     );
   } catch (error) {
