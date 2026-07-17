@@ -332,6 +332,9 @@
   .nuvemshop-voltage-options button.active { border-color: var(--accent); background: rgba(79,110,247,.12); color: var(--accent); }
   .nuvemshop-manual-note { color: var(--muted); font-size: 11px; margin: 4px 0 12px; }
   .nuvemshop-manual-actions { display: flex; gap: 10px; margin-top: 14px; }
+  .nuvemshop-units-help { min-height: 17px; margin-top: 6px; color: var(--muted); font-size: 11px; line-height: 1.5; }
+  .nuvemshop-units-help strong { color: var(--text); }
+  .nuvemshop-link-units { color: var(--muted); font-size: 10px; font-weight: 600; white-space: nowrap; }
   .nuvemshop-sync-preview { margin: 8px 0 32px; padding-top: 24px; border-top: 1px solid var(--border); }
   .nuvemshop-preview-time { color: var(--muted); font-size: 11px; margin-top: 5px; }
   .nuvemshop-preview-stats { margin-bottom: 18px; }

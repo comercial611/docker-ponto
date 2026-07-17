@@ -322,7 +322,7 @@
 
       <div class="table-wrap nuvemshop-table-scroll nuvemshop-preview-table-scroll">
         <table>
-          <thead><tr><th>Produto vinculado</th><th>Nuvemshop atual</th><th>Destino Nuvemshop</th><th>Diferenca</th><th>Resultado previsto</th></tr></thead>
+          <thead><tr><th>Produto vinculado</th><th>Regra da oferta</th><th>Nuvemshop atual</th><th>Destino Nuvemshop</th><th>Diferenca</th><th>Resultado previsto</th></tr></thead>
           <tbody id="nuvemshop-preview-tbody"></tbody>
         </table>
       </div>
@@ -589,6 +589,20 @@
       </div>
     </div>
 
+    <div class="form-field">
+      <label>Unidades fisicas consumidas por venda *</label>
+      <input
+        type="number"
+        id="nuvemshop-manual-units"
+        min="1"
+        max="10000"
+        step="1"
+        value="1"
+        oninput="updateManualNuvemshopUnitsPreview()"
+      >
+      <div class="nuvemshop-units-help" id="nuvemshop-manual-units-help"></div>
+    </div>
+
     <p class="nuvemshop-manual-note">O vinculo apenas associa os cadastros. Nenhum estoque sera alterado.</p>
     <div class="baixa-error" id="nuvemshop-manual-error"></div>
     <div class="nuvemshop-manual-actions">
@@ -648,6 +662,6 @@
 <div class="toast-stack" id="toast-stack"></div>
 
 <script src="js/supabase-config.js"></script>
-<script src="js/admin.js?v=20260717-nuvemshop-front-2"></script>
+<script src="js/admin.js?v=20260717-nuvemshop-front-multiplicadores-1"></script>
 </body>
 </html>
