@@ -7,8 +7,14 @@ let csvPreviewApplied = false;
 let csvPreviewFileName = null;
 let csvPreviewHash = null;
 let csvLots = [];
+let csvLotsPage = 1;
+const csvLotsPageSize = 5;
+let csvLotsTotal = 0;
+const csvExpandedLots = new Set();
 let nuvemshopCatalogRows = [];
 let nuvemshopCatalogLoaded = false;
+let nuvemshopCatalogLoading = false;
+let nuvemshopCatalogError = false;
 let nuvemshopCatalogPage = 1;
 let nuvemshopCatalogPageSize = 50;
 let nuvemshopStoreId = null;
@@ -719,22 +725,83 @@ function flattenNuvemshopCatalog(remoteProducts, links) {
   return rows;
 }
 
+function setNuvemshopConnectionState(state, text) {
+  const connectionText = document.getElementById('nuvemshop-connection-text');
+  const connectionDot = document.querySelector('.nuvemshop-connection-dot');
+  if (connectionText) connectionText.textContent = text;
+  if (connectionDot) {
+    connectionDot.className = `nuvemshop-connection-dot${state && state !== 'ready' ? ` ${state}` : ''}`;
+  }
+}
+
+function setNuvemshopWorkflowStep(id, state, status) {
+  const step = document.getElementById(`nuvemshop-flow-${id}`);
+  const statusElement = document.getElementById(`nuvemshop-flow-${id}-status`);
+  if (!step || !statusElement) return;
+  step.className = `nuvemshop-workflow-step ${state}`;
+  statusElement.textContent = status;
+  if (state === 'current') step.setAttribute('aria-current', 'step');
+  else step.removeAttribute('aria-current');
+}
+
+function renderNuvemshopWorkflow() {
+  const catalogReady = nuvemshopCatalogLoaded;
+  const previewReady = catalogReady && nuvemshopPreviewGenerated;
+  const validationReady = previewReady && Boolean(nuvemshopServerSimulation?.auditoria_id);
+  const pilotChecked = validationReady && Boolean(nuvemshopPilotReadiness);
+  const previewCount = previewReady ? buildNuvemshopSyncPreviewRows().length : 0;
+
+  const catalogState = nuvemshopCatalogError
+    ? 'error'
+    : catalogReady && !nuvemshopCatalogLoading ? 'complete' : 'current';
+  const catalogStatus = nuvemshopCatalogError
+    ? 'Falha na consulta'
+    : nuvemshopCatalogLoading
+      ? 'Consultando...'
+      : catalogReady ? `${nuvemshopCatalogRows.length} variantes` : 'Aguardando consulta';
+  setNuvemshopWorkflowStep('catalog', catalogState, catalogStatus);
+
+  setNuvemshopWorkflowStep(
+    'preview',
+    previewReady ? 'complete' : catalogReady ? 'current' : 'pending',
+    previewReady ? `${previewCount} vinculos` : catalogReady ? 'Pronta para gerar' : 'Pendente'
+  );
+  setNuvemshopWorkflowStep(
+    'validation',
+    validationReady ? 'complete' : previewReady ? 'current' : 'pending',
+    validationReady ? 'Concluida com seguranca' : previewReady ? 'Aguardando validacao' : 'Pendente'
+  );
+
+  let pilotState = validationReady ? 'current' : 'pending';
+  let pilotStatus = validationReady ? 'Aguardando verificacao' : 'Pendente';
+  if (pilotChecked) {
+    const protectionsReady = nuvemshopPilotReadiness?.requisitos_atendidos === true;
+    pilotState = protectionsReady ? 'complete' : 'warning';
+    pilotStatus = protectionsReady ? 'Protecoes conferidas' : 'Protecoes pendentes';
+  }
+  setNuvemshopWorkflowStep('pilot', pilotState, pilotStatus);
+}
+
 async function loadNuvemshopCatalog(force = false) {
   if (nuvemshopCatalogLoaded && !force) return;
   const button = document.getElementById('nuvemshop-refresh-btn');
   const message = document.getElementById('nuvemshop-message');
   const tableWrap = document.getElementById('nuvemshop-table-wrap');
   const pagination = document.getElementById('nuvemshop-pagination');
+  nuvemshopCatalogLoading = true;
+  nuvemshopCatalogError = false;
   button.disabled = true;
   button.textContent = 'Consultando...';
-  message.className = 'nuvemshop-message';
+  message.className = 'nuvemshop-message loading';
   message.textContent = 'Consultando catalogo da Nuvemshop...';
   message.style.display = 'flex';
   tableWrap.style.display = 'none';
   pagination.style.display = 'none';
+  setNuvemshopConnectionState('loading', 'Consultando catalogo e local de estoque...');
   nuvemshopServerSimulation = null;
   nuvemshopPilotReadiness = null;
   nuvemshopPilotSelectedItemId = null;
+  renderNuvemshopWorkflow();
 
   try {
     const { data, error } = await sb.functions.invoke('nuvemshop-catalogo', { method: 'GET' });
@@ -755,12 +822,16 @@ async function loadNuvemshopCatalog(force = false) {
     renderNuvemshopCatalog();
   } catch (error) {
     console.error('Falha ao consultar Nuvemshop', error);
+    nuvemshopCatalogError = true;
+    setNuvemshopConnectionState('error', 'Falha ao consultar a Nuvemshop');
     message.className = 'nuvemshop-message error';
     message.textContent = 'Nao foi possivel consultar o catalogo. Confira os logs da funcao nuvemshop-catalogo.';
     message.style.display = 'flex';
   } finally {
+    nuvemshopCatalogLoading = false;
     button.disabled = false;
     button.textContent = 'Atualizar catalogo';
+    renderNuvemshopWorkflow();
   }
 }
 
@@ -787,21 +858,19 @@ function renderNuvemshopCatalog() {
   document.getElementById('nuvemshop-stat-matched').textContent = identified;
   document.getElementById('nuvemshop-stat-review').textContent = review;
   document.getElementById('nuvemshop-list-title').textContent = `Catalogo externo - loja ${nuvemshopStoreId || ''}`;
-  const connectionText = document.getElementById('nuvemshop-connection-text');
-  if (connectionText) {
-    if (nuvemshopStockLocation?.status === 'unico') {
-      connectionText.textContent = `Somente leitura | Local confirmado: ${nuvemshopStockLocation.local.nome}`;
-    } else if (nuvemshopStockLocation?.status === 'multiplo') {
-      connectionText.textContent = `${nuvemshopStockLocation.total} locais encontrados | Sincronizacao bloqueada`;
-    } else if (nuvemshopStockLocation?.status === 'nao_encontrado') {
-      connectionText.textContent = 'Somente leitura | Nenhum local separado informado pela Nuvemshop';
-    } else if (nuvemshopStockLocation?.status === 'indisponivel') {
-      const httpStatus = nuvemshopStockLocation.http_status ? ` (HTTP ${nuvemshopStockLocation.http_status})` : '';
-      connectionText.textContent = `Somente leitura | Consulta de local indisponivel${httpStatus}`;
-    } else {
-      connectionText.textContent = 'Somente leitura | Local de estoque ainda nao confirmado';
-    }
+  if (nuvemshopStockLocation?.status === 'unico') {
+    setNuvemshopConnectionState('ready', `Somente leitura | Local confirmado: ${nuvemshopStockLocation.local.nome}`);
+  } else if (nuvemshopStockLocation?.status === 'multiplo') {
+    setNuvemshopConnectionState('warning', `${nuvemshopStockLocation.total} locais encontrados | Sincronizacao bloqueada`);
+  } else if (nuvemshopStockLocation?.status === 'nao_encontrado') {
+    setNuvemshopConnectionState('warning', 'Somente leitura | Nenhum local separado informado pela Nuvemshop');
+  } else if (nuvemshopStockLocation?.status === 'indisponivel') {
+    const httpStatus = nuvemshopStockLocation.http_status ? ` (HTTP ${nuvemshopStockLocation.http_status})` : '';
+    setNuvemshopConnectionState('warning', `Somente leitura | Consulta de local indisponivel${httpStatus}`);
+  } else {
+    setNuvemshopConnectionState('warning', 'Somente leitura | Local de estoque ainda nao confirmado');
   }
+  renderNuvemshopWorkflow();
   if (nuvemshopPreviewGenerated) renderNuvemshopSyncPreview();
 
   const message = document.getElementById('nuvemshop-message');
@@ -1000,6 +1069,7 @@ function renderNuvemshopSyncPreview() {
       : 'Confirme o local e os vinculos antes da validacao.';
     validationText.classList.remove('valid');
   }
+  renderNuvemshopWorkflow();
 
   const tbody = document.getElementById('nuvemshop-preview-tbody');
   if (!filteredRows.length) {
@@ -1377,6 +1447,7 @@ function renderNuvemshopPilotReadiness(data) {
   ${blockers.length ? `<div class="nuvemshop-pilot-blockers">${blockers.map(blocker => `<div>${escapeHtml(blocker)}</div>`).join('')}</div>` : ''}`;
   result.classList.add('visible');
   renderNuvemshopPilotWindow(data);
+  renderNuvemshopWorkflow();
 }
 
 async function runNuvemshopPilotReadiness() {
@@ -2833,24 +2904,91 @@ async function confirmBaixa() {
 // ─── HISTÓRICO ───────────────────────────────────────────
 let historyRows = [];
 
-async function loadCsvLots() {
+async function loadCsvLots(resetPage = false) {
   const el = document.getElementById('csv-lots-list');
   if (!el) return;
 
-  const { data, error } = await sb
+  if (resetPage) csvLotsPage = 1;
+  const startIndex = (csvLotsPage - 1) * csvLotsPageSize;
+  const endIndex = startIndex + csvLotsPageSize - 1;
+  el.innerHTML = '<div class="empty-state">Carregando importacoes...</div>';
+
+  const { data, error, count } = await sb
     .from('baixas_csv_lotes')
-    .select('*, baixas_csv_itens(*)')
+    .select('*, baixas_csv_itens(*)', { count: 'exact' })
     .order('created_at', { ascending: false })
-    .limit(8);
+    .range(startIndex, endIndex);
 
   if (error) {
     csvLots = [];
+    csvLotsTotal = 0;
     el.innerHTML = '<div class="empty-state">Relatorio de CSV ainda nao configurado no Supabase.</div>';
+    renderCsvLotsPagination();
+    return;
+  }
+
+  csvLotsTotal = count || 0;
+  const totalPages = Math.max(1, Math.ceil(csvLotsTotal / csvLotsPageSize));
+  if (csvLotsPage > totalPages) {
+    csvLotsPage = totalPages;
+    await loadCsvLots();
     return;
   }
 
   csvLots = data || [];
   renderCsvLots();
+}
+
+function toggleCsvLot(lotId) {
+  const key = String(lotId);
+  if (csvExpandedLots.has(key)) csvExpandedLots.delete(key);
+  else csvExpandedLots.add(key);
+  renderCsvLots();
+}
+
+function changeCsvLotsPage(delta) {
+  setCsvLotsPage(csvLotsPage + delta);
+}
+
+function setCsvLotsPage(page) {
+  const totalPages = Math.max(1, Math.ceil(csvLotsTotal / csvLotsPageSize));
+  const requestedPage = page === 'last' ? totalPages : Number(page);
+  if (!Number.isFinite(requestedPage)) return;
+
+  const nextPage = Math.min(Math.max(1, requestedPage), totalPages);
+  if (nextPage === csvLotsPage) return;
+
+  csvLotsPage = nextPage;
+  csvExpandedLots.clear();
+  loadCsvLots();
+  document.getElementById('csv-lots-heading')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function renderCsvLotsPagination() {
+  const pagination = document.getElementById('csv-lots-pagination');
+  const summary = document.getElementById('csv-lots-pagination-summary');
+  const pageInfo = document.getElementById('csv-lots-page-info');
+  const firstButton = document.getElementById('csv-lots-page-first');
+  const previousButton = document.getElementById('csv-lots-page-prev');
+  const nextButton = document.getElementById('csv-lots-page-next');
+  const lastButton = document.getElementById('csv-lots-page-last');
+  if (!pagination || !summary || !pageInfo || !firstButton || !previousButton || !nextButton || !lastButton) return;
+
+  if (!csvLotsTotal) {
+    pagination.style.display = 'none';
+    return;
+  }
+
+  const totalPages = Math.max(1, Math.ceil(csvLotsTotal / csvLotsPageSize));
+  const startItem = (csvLotsPage - 1) * csvLotsPageSize + 1;
+  const endItem = Math.min(csvLotsPage * csvLotsPageSize, csvLotsTotal);
+  pagination.style.display = 'flex';
+  summary.textContent = `Exibindo ${startItem}-${endItem} de ${csvLotsTotal} importacoes`;
+  pageInfo.textContent = `Pagina ${csvLotsPage} de ${totalPages}`;
+  firstButton.disabled = csvLotsPage === 1;
+  previousButton.disabled = csvLotsPage === 1;
+  nextButton.disabled = csvLotsPage === totalPages;
+  lastButton.disabled = csvLotsPage === totalPages;
 }
 
 function renderCsvLots() {
@@ -2859,17 +2997,20 @@ function renderCsvLots() {
 
   if (!csvLots.length) {
     el.innerHTML = '<div class="empty-state">Nenhuma importacao CSV registrada ainda.</div>';
+    renderCsvLotsPagination();
     return;
   }
 
   el.innerHTML = csvLots.map(lote => {
+    const lotKey = String(lote.id);
+    const expanded = csvExpandedLots.has(lotKey);
+    const detailId = `csv-lot-details-${lotKey}`;
     const time = new Date(lote.created_at).toLocaleString('pt-BR');
     const movementDate = lote.data_movimento
       ? new Date(`${lote.data_movimento}T12:00:00`).toLocaleDateString('pt-BR')
       : 'nao informada';
     const itens = (lote.baixas_csv_itens || []).slice().sort((a, b) => a.produto_nome.localeCompare(b.produto_nome));
-    const details = itens.length
-      ? `<div class="csv-lot-details">
+    const details = `<div class="csv-lot-details" id="${escapeHtml(detailId)}"${expanded ? '' : ' hidden'}>
           ${itens.map(item => `
             <div class="csv-lot-item">
               <div>
@@ -2880,25 +3021,28 @@ function renderCsvLots() {
               <div class="csv-lot-stat"><strong>${item.quantidade_anterior}</strong>antes</div>
               <div class="csv-lot-stat"><strong>${item.quantidade_nova}</strong>depois</div>
             </div>
-          `).join('')}
-        </div>`
-      : '';
+          `).join('') || '<div class="empty-state">Nenhum item detalhado neste lote.</div>'}
+        </div>`;
 
     return `<div class="csv-lot-card">
-      <div class="csv-lot-main">
-        <div>
-          <div class="csv-lot-title">${escapeHtml(lote.arquivo_nome || 'CSV aplicado')}</div>
-          <div class="csv-lot-meta">Movimento ${movementDate} · aplicado em ${time} · ${escapeHtml(lote.aplicado_email || 'admin')}</div>
-        </div>
-        <div class="csv-lot-stat"><strong>${lote.produtos_encontrados || 0}</strong>encontrados</div>
-        <div class="csv-lot-stat"><strong>${lote.total_aplicado || 0}</strong>pecas baixadas</div>
-        <div class="csv-lot-stat"><strong>${lote.nao_encontrados || 0}</strong>nao encontrados</div>
-        <div class="csv-lot-stat"><strong>${lote.maquinas_ignoradas || 0}</strong>maquinas</div>
-        <div class="csv-lot-stat"><strong>${lote.estoque_insuficiente || 0}</strong>insuficiente</div>
-      </div>
+      <button type="button" class="csv-lot-toggle" onclick='toggleCsvLot(${JSON.stringify(lotKey)})' aria-expanded="${expanded}" aria-controls="${escapeHtml(detailId)}">
+        <span class="csv-lot-main">
+          <span class="csv-lot-heading">
+            <span class="csv-lot-title">${escapeHtml(lote.arquivo_nome || 'CSV aplicado')}</span>
+            <span class="csv-lot-meta">Movimento ${movementDate} · aplicado em ${time} · ${escapeHtml(lote.aplicado_email || 'admin')}</span>
+          </span>
+          <span class="csv-lot-stat"><strong>${lote.produtos_encontrados || 0}</strong>encontrados</span>
+          <span class="csv-lot-stat"><strong>${lote.total_aplicado || 0}</strong>pecas baixadas</span>
+          <span class="csv-lot-stat"><strong>${lote.nao_encontrados || 0}</strong>nao encontrados</span>
+          <span class="csv-lot-stat"><strong>${lote.maquinas_ignoradas || 0}</strong>maquinas</span>
+          <span class="csv-lot-stat"><strong>${lote.estoque_insuficiente || 0}</strong>insuficiente</span>
+          <span class="csv-lot-chevron" aria-hidden="true">&#9662;</span>
+        </span>
+      </button>
       ${details}
     </div>`;
   }).join('');
+  renderCsvLotsPagination();
 }
 
 async function loadHistory() {
@@ -3049,7 +3193,7 @@ function subscribeRealtime() {
       pushHistoryNotification(payload.new);
     })
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'baixas_csv_lotes' }, async () => {
-      await loadCsvLots();
+      await loadCsvLots(true);
     })
     .on('postgres_changes', { event: '*', schema: 'public', table: 'vendedores' }, async () => { await loadVendedores(); })
     .subscribe();
@@ -3061,6 +3205,7 @@ function switchTab(name) {
   document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
   document.getElementById(`tab-${name}`).classList.add('active');
   if (name === 'nuvemshop') {
+    renderNuvemshopWorkflow();
     loadNuvemshopCatalog();
     loadNuvemshopAuditHistory();
   }

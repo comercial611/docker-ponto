@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Estoque - Administração</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<link rel="stylesheet" href="css/admin.css?v=20260717-nuvemshop-piloto-real-3">
+<link rel="stylesheet" href="css/admin.css?v=20260717-nuvemshop-front-3">
 </head>
 <body>
 
@@ -26,6 +26,10 @@
     <div class="header-left">
       <div class="header-logo">Estoque Admin</div>
       <div class="live-badge"><div class="live-dot"></div> Tempo real</div>
+      <a class="header-home-link" href="index.html" title="Voltar ao painel inicial" aria-label="Voltar ao painel inicial">
+        <span class="header-home-icon" aria-hidden="true">&larr;</span>
+        <span class="header-home-label">In&iacute;cio</span>
+      </a>
     </div>
     <div class="header-right">
       <a class="btn-report-link" href="relatorios.html">Relatorios</a>
@@ -89,9 +93,11 @@
 
   <!-- PRODUTOS -->
   <div class="tab-content" id="tab-produtos">
-    <div class="form-card">
+    <div class="form-card product-form-card">
       <div class="form-title" id="form-title">Cadastrar produto</div>
 
+      <div class="product-form-layout">
+      <div class="product-form-column">
       <div class="form-section-label">Identificação</div>
       <div class="form-field"><label>Nome do produto *</label><input type="text" id="p-nome" placeholder="Ex: Prensa de Caneca"></div>
       <div class="form-field"><label>Categoria</label><select id="p-categoria"><option value="maquina">Máquina / Prensa</option><option value="produto">Produto</option></select></div>
@@ -102,13 +108,6 @@
           <div class="form-field"><label>Código de referência</label><input type="text" id="p-cod-ref" placeholder="REF-7891"></div>
           <div class="form-field"><label>Código de barras</label><input type="text" id="p-cod-barras" placeholder="7890000000000"></div>
         </div>
-      </div>
-
-      <div class="form-section-label">Estoque</div>
-
-      <div class="checkbox-row" onclick="document.getElementById('p-tem-voltagem').click()">
-        <input type="checkbox" id="p-tem-voltagem" onclick="toggleVoltagem(event)">
-        <label for="p-tem-voltagem" onclick="event.stopPropagation()">Este produto tem voltagem (110V / 220V)</label>
       </div>
 
       <div id="codes-voltage-wrap">
@@ -129,6 +128,15 @@
             <div class="form-field"><label>Código de barras</label><input type="text" id="p-cod-barras-220" placeholder="Código de barras 220V"></div>
           </div>
         </div>
+      </div>
+      </div>
+
+      <div class="product-form-column">
+      <div class="form-section-label">Estoque</div>
+
+      <div class="checkbox-row" onclick="document.getElementById('p-tem-voltagem').click()">
+        <input type="checkbox" id="p-tem-voltagem" onclick="toggleVoltagem(event)">
+        <label for="p-tem-voltagem" onclick="event.stopPropagation()">Este produto tem voltagem (110V / 220V)</label>
       </div>
 
       <div class="qty-block">
@@ -175,6 +183,8 @@
         <button class="btn-cancel" id="btn-cancel-edit" style="display:none" onclick="cancelEdit()">Cancelar edição</button>
       </div>
       <div class="success-msg" id="form-success"></div>
+      </div>
+      </div>
     </div>
 
     <div class="csv-preview-card">
@@ -240,6 +250,37 @@
       </div>
     </div>
 
+    <div class="nuvemshop-workflow" id="nuvemshop-workflow" aria-label="Etapas da conferencia Nuvemshop" aria-live="polite">
+      <div class="nuvemshop-workflow-step current" id="nuvemshop-flow-catalog">
+        <span class="nuvemshop-workflow-number" aria-hidden="true">1</span>
+        <span class="nuvemshop-workflow-copy">
+          <strong>Catalogo</strong>
+          <span id="nuvemshop-flow-catalog-status">Aguardando consulta</span>
+        </span>
+      </div>
+      <div class="nuvemshop-workflow-step pending" id="nuvemshop-flow-preview">
+        <span class="nuvemshop-workflow-number" aria-hidden="true">2</span>
+        <span class="nuvemshop-workflow-copy">
+          <strong>Previa</strong>
+          <span id="nuvemshop-flow-preview-status">Pendente</span>
+        </span>
+      </div>
+      <div class="nuvemshop-workflow-step pending" id="nuvemshop-flow-validation">
+        <span class="nuvemshop-workflow-number" aria-hidden="true">3</span>
+        <span class="nuvemshop-workflow-copy">
+          <strong>Validacao</strong>
+          <span id="nuvemshop-flow-validation-status">Pendente</span>
+        </span>
+      </div>
+      <div class="nuvemshop-workflow-step pending" id="nuvemshop-flow-pilot">
+        <span class="nuvemshop-workflow-number" aria-hidden="true">4</span>
+        <span class="nuvemshop-workflow-copy">
+          <strong>Piloto</strong>
+          <span id="nuvemshop-flow-pilot-status">Pendente</span>
+        </span>
+      </div>
+    </div>
+
     <div class="stats-grid nuvemshop-stats">
       <div class="stat-card"><div class="stat-label">Produtos locais</div><div class="stat-value" id="nuvemshop-stat-local">-</div></div>
       <div class="stat-card"><div class="stat-label">Variantes Nuvemshop</div><div class="stat-value" id="nuvemshop-stat-remote">-</div></div>
@@ -279,7 +320,7 @@
         </div>
       </div>
 
-      <div class="table-wrap">
+      <div class="table-wrap nuvemshop-table-scroll nuvemshop-preview-table-scroll">
         <table>
           <thead><tr><th>Produto vinculado</th><th>Nuvemshop atual</th><th>Destino Nuvemshop</th><th>Diferenca</th><th>Resultado previsto</th></tr></thead>
           <tbody id="nuvemshop-preview-tbody"></tbody>
@@ -301,7 +342,7 @@
       </div>
     </div>
     <div class="nuvemshop-message" id="nuvemshop-message">Abra esta aba para consultar o catalogo.</div>
-    <div class="table-wrap" id="nuvemshop-table-wrap" style="display:none">
+    <div class="table-wrap nuvemshop-table-scroll" id="nuvemshop-table-wrap" style="display:none">
       <table>
         <thead><tr><th>Status</th><th>Produto Nuvemshop</th><th>Variante</th><th>Codigos</th><th>Estoque Nuvemshop</th><th>Possivel produto local</th><th>Estoque local</th><th>Acao</th></tr></thead>
         <tbody id="nuvemshop-tbody"></tbody>
@@ -341,7 +382,7 @@
         </div>
       </div>
       <div class="nuvemshop-message" id="nuvemshop-audit-message">Abra esta aba para consultar o historico.</div>
-      <div class="table-wrap" id="nuvemshop-audit-table-wrap" style="display:none">
+      <div class="table-wrap nuvemshop-table-scroll nuvemshop-audit-table-scroll" id="nuvemshop-audit-table-wrap" style="display:none">
         <table class="nuvemshop-audit-table">
           <thead><tr><th>Data</th><th>Modo</th><th>Loja</th><th>Itens</th><th>Resultado</th><th>Solicitado por</th><th>Detalhes</th></tr></thead>
           <tbody id="nuvemshop-audit-tbody"></tbody>
@@ -410,11 +451,21 @@
 
   <!-- HISTÓRICO -->
   <div class="tab-content" id="tab-historico">
-    <div class="section-header">
+    <div class="section-header" id="csv-lots-heading">
       <div class="section-title">Últimas importações CSV</div>
-      <button class="btn-cancel" onclick="loadCsvLots()">Atualizar</button>
+      <button class="btn-cancel" onclick="loadCsvLots(true)">Atualizar</button>
     </div>
     <div class="csv-lots-list" id="csv-lots-list"><div class="empty-state">Carregando importações...</div></div>
+    <div class="csv-lots-pagination" id="csv-lots-pagination" style="display:none">
+      <div class="csv-lots-pagination-summary" id="csv-lots-pagination-summary"></div>
+      <div class="csv-lots-pagination-controls">
+        <button type="button" class="nuvemshop-page-btn" id="csv-lots-page-first" onclick="setCsvLotsPage(1)" title="Primeira pagina" aria-label="Primeira pagina">&laquo;</button>
+        <button type="button" class="nuvemshop-page-btn" id="csv-lots-page-prev" onclick="changeCsvLotsPage(-1)" title="Pagina anterior" aria-label="Pagina anterior">&lsaquo;</button>
+        <span class="nuvemshop-page-info" id="csv-lots-page-info"></span>
+        <button type="button" class="nuvemshop-page-btn" id="csv-lots-page-next" onclick="changeCsvLotsPage(1)" title="Proxima pagina" aria-label="Proxima pagina">&rsaquo;</button>
+        <button type="button" class="nuvemshop-page-btn" id="csv-lots-page-last" onclick="setCsvLotsPage('last')" title="Ultima pagina" aria-label="Ultima pagina">&raquo;</button>
+      </div>
+    </div>
 
     <div class="section-header">
       <div class="section-title">Últimas atualizações de estoque</div>
@@ -453,7 +504,7 @@
     <div class="nuvemshop-simulation-summary" id="nuvemshop-simulation-summary"></div>
     <div class="nuvemshop-simulation-result" id="nuvemshop-simulation-result"></div>
     <div class="baixa-error" id="nuvemshop-simulation-error"></div>
-    <div class="nuvemshop-manual-actions">
+    <div class="nuvemshop-manual-actions nuvemshop-modal-actions">
       <button class="btn-save" id="nuvemshop-simulation-run" onclick="runNuvemshopSimulation()">Executar validacao</button>
       <button class="btn-cancel" onclick="closeNuvemshopSimulationModal()">Fechar</button>
     </div>
@@ -492,7 +543,7 @@
       <div class="nuvemshop-pilot-application-result" id="nuvemshop-pilot-application-result"></div>
     </div>
     <div class="baixa-error" id="nuvemshop-pilot-error"></div>
-    <div class="nuvemshop-manual-actions">
+    <div class="nuvemshop-manual-actions nuvemshop-modal-actions">
       <button class="btn-save" id="nuvemshop-pilot-run" onclick="runNuvemshopPilotReadiness()">Verificar protecoes</button>
       <button class="btn-save" id="nuvemshop-pilot-apply" onclick="runNuvemshopPilotApplication()" disabled>Aplicar 1 item</button>
       <button class="btn-cancel" onclick="closeNuvemshopPilotModal()">Fechar</button>
@@ -597,6 +648,6 @@
 <div class="toast-stack" id="toast-stack"></div>
 
 <script src="js/supabase-config.js"></script>
-<script src="js/admin.js?v=20260717-nuvemshop-piloto-real-3"></script>
+<script src="js/admin.js?v=20260717-nuvemshop-front-2"></script>
 </body>
 </html>

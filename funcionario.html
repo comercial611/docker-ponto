@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Atualização de Estoque</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<link rel="stylesheet" href="css/funcionario.css?v=20260710-realtime">
+<link rel="stylesheet" href="css/funcionario.css?v=20260717-desktop2">
 </head>
 <body>
 
@@ -22,24 +22,108 @@
 </div>
 
 <div id="app-screen">
-  <header>
-    <div>
-      <div class="header-title">Contagem de estoque</div>
-      <div class="header-user" id="user-email"></div>
+  <header class="topbar">
+    <div class="topbar-left">
+      <div class="header-logo">Estoque</div>
+      <div class="live-badge"><span class="live-dot"></span> Tempo real</div>
+      <a class="home-link" href="index.html" title="Voltar ao painel inicial" aria-label="Voltar ao painel inicial">
+        <span aria-hidden="true">&larr;</span>
+        <span class="home-link-label">Início</span>
+      </a>
     </div>
-    <button class="btn-logout" onclick="doLogout()">Sair</button>
+    <div class="topbar-right">
+      <div class="user-block">
+        <span class="user-avatar" aria-hidden="true">E</span>
+        <div>
+          <div class="user-role">Funcionário</div>
+          <div class="header-user" id="user-email"></div>
+        </div>
+      </div>
+      <button class="btn-logout" onclick="doLogout()">Sair</button>
+    </div>
   </header>
-  <div class="search-wrap">
-    <input class="search-input" id="search-input" placeholder="🔍  Buscar produto..." oninput="renderCards()">
-  </div>
-  <div class="products-list" id="products-list">
-    <div class="empty-state">Carregando produtos...</div>
+
+  <div class="inventory-shell">
+    <aside class="inventory-sidebar">
+      <div class="sidebar-heading">
+        <span class="sidebar-eyebrow">CONTROLE</span>
+        <h2>Estoque</h2>
+      </div>
+
+      <label class="search-wrap" for="search-input">
+        <span class="search-icon" aria-hidden="true">⌕</span>
+        <input class="search-input" id="search-input" placeholder="Buscar produto ou código" oninput="renderCards()">
+      </label>
+
+      <div class="filter-group" aria-label="Filtrar produtos por status">
+        <div class="filter-title">STATUS</div>
+        <button class="status-filter active" type="button" data-status="all" onclick="setStatusFilter('all')" aria-pressed="true">
+          <span><i class="status-dot neutral"></i>Todos os produtos</span>
+          <strong id="filter-count-all">0</strong>
+        </button>
+        <button class="status-filter" type="button" data-status="ok" onclick="setStatusFilter('ok')" aria-pressed="false">
+          <span><i class="status-dot ok"></i>Em estoque</span>
+          <strong id="filter-count-ok">0</strong>
+        </button>
+        <button class="status-filter" type="button" data-status="low" onclick="setStatusFilter('low')" aria-pressed="false">
+          <span><i class="status-dot low"></i>Estoque baixo</span>
+          <strong id="filter-count-low">0</strong>
+        </button>
+        <button class="status-filter" type="button" data-status="out" onclick="setStatusFilter('out')" aria-pressed="false">
+          <span><i class="status-dot out"></i>Sem estoque</span>
+          <strong id="filter-count-out">0</strong>
+        </button>
+      </div>
+    </aside>
+
+    <main class="inventory-main">
+      <div class="content-heading">
+        <div>
+          <div class="page-eyebrow">OPERAÇÃO DE ESTOQUE</div>
+          <h1>Atualização de contagem</h1>
+          <p id="visible-products-count">Carregando produtos...</p>
+        </div>
+        <button class="btn-refresh" type="button" onclick="loadProducts()">
+          <span aria-hidden="true">↻</span> Atualizar lista
+        </button>
+      </div>
+
+      <div class="stats-grid">
+        <div class="stat-item">
+          <span>Total de produtos</span>
+          <strong id="stat-total">0</strong>
+        </div>
+        <div class="stat-item ok">
+          <span>Em estoque</span>
+          <strong id="stat-ok">0</strong>
+        </div>
+        <div class="stat-item low">
+          <span>Estoque baixo</span>
+          <strong id="stat-low">0</strong>
+        </div>
+        <div class="stat-item out">
+          <span>Sem estoque</span>
+          <strong id="stat-out">0</strong>
+        </div>
+      </div>
+
+      <div class="products-panel">
+        <div class="products-columns" aria-hidden="true">
+          <span>Produto</span>
+          <span>Situação atual</span>
+          <span>Nova contagem</span>
+        </div>
+        <div class="products-list" id="products-list">
+          <div class="empty-state">Carregando produtos...</div>
+        </div>
+      </div>
+    </main>
   </div>
 </div>
 
 <div class="toast" id="toast"></div>
 
 <script src="js/supabase-config.js"></script>
-<script src="js/funcionario.js?v=20260710-realtime"></script>
+<script src="js/funcionario.js?v=20260717-desktop2"></script>
 </body>
 </html>
