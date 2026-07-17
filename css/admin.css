@@ -316,7 +316,7 @@
   .nuvemshop-simulation-result-item strong { display: block; margin-top: 5px; font-size: 18px; }
   .nuvemshop-simulation-safe { margin-top: 12px; color: var(--green); font-size: 12px; }
   .nuvemshop-simulation-audit { margin-top: 6px; color: var(--muted); font-size: 10px; overflow-wrap: anywhere; }
-  .nuvemshop-pilot-modal { max-width: 680px; }
+  .nuvemshop-pilot-modal { max-width: 680px; max-height: 90vh; overflow-y: auto; }
   .nuvemshop-pilot-summary { border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); padding: 14px 0; color: var(--muted); font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
   .nuvemshop-pilot-summary strong { color: var(--text); }
   .nuvemshop-pilot-result { display: none; margin-top: 16px; }
@@ -333,6 +333,26 @@
   .nuvemshop-pilot-status.blocked { color: var(--yellow); border-color: rgba(245,158,11,.35); background: rgba(245,158,11,.08); }
   .nuvemshop-pilot-blockers { margin-top: 10px; color: var(--muted); font-size: 11px; line-height: 1.6; }
   .nuvemshop-pilot-blockers > div::before { content: "- "; color: var(--yellow); }
+  .nuvemshop-pilot-application { display: none; margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--border); }
+  .nuvemshop-pilot-application.visible { display: block; }
+  .nuvemshop-pilot-application-title { margin-bottom: 10px; font-size: 13px; font-weight: 700; }
+  .nuvemshop-pilot-items { display: grid; gap: 8px; max-height: 230px; overflow-y: auto; padding-right: 3px; }
+  .nuvemshop-pilot-item { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; align-items: center; gap: 10px; width: 100%; border: 1px solid var(--border); border-radius: 4px; background: var(--bg); padding: 11px 12px; color: var(--text); text-align: left; cursor: pointer; }
+  .nuvemshop-pilot-item:hover { border-color: var(--accent); }
+  .nuvemshop-pilot-item.selected { border-color: var(--accent); background: rgba(79,110,247,.08); }
+  .nuvemshop-pilot-item input { width: 16px; height: 16px; accent-color: var(--accent); pointer-events: none; }
+  .nuvemshop-pilot-item-name { display: block; font-size: 12px; font-weight: 700; }
+  .nuvemshop-pilot-item-meta { display: block; margin-top: 3px; color: var(--muted); font-size: 10px; }
+  .nuvemshop-pilot-item-stock { min-width: 74px; color: var(--muted); font-size: 11px; text-align: right; white-space: nowrap; }
+  .nuvemshop-pilot-item-stock strong { color: var(--text); font-size: 13px; }
+  .nuvemshop-pilot-confirmation { margin: 14px 0 0; }
+  .nuvemshop-pilot-application-note { margin-top: 8px; color: var(--muted); font-size: 11px; line-height: 1.5; }
+  .nuvemshop-pilot-application-note.ready { color: var(--yellow); }
+  .nuvemshop-pilot-application-result { display: none; margin-top: 12px; border: 1px solid var(--border); border-radius: 4px; padding: 12px; font-size: 12px; line-height: 1.5; }
+  .nuvemshop-pilot-application-result.visible { display: block; }
+  .nuvemshop-pilot-application-result.success { color: var(--green); border-color: rgba(34,197,94,.35); background: rgba(34,197,94,.08); }
+  .nuvemshop-pilot-application-result.warning { color: var(--yellow); border-color: rgba(245,158,11,.35); background: rgba(245,158,11,.08); }
+  .nuvemshop-pilot-application-result.error { color: var(--red); border-color: rgba(239,68,68,.35); background: rgba(239,68,68,.08); }
   .nuvemshop-audit-section { margin-top: 32px; padding-top: 24px; border-top: 1px solid var(--border); }
   .nuvemshop-audit-subtitle { color: var(--muted); font-size: 11px; margin-top: 5px; }
   .nuvemshop-audit-table { min-width: 940px; }
@@ -405,6 +425,9 @@
     .nuvemshop-simulation-result-item { border-bottom: 1px solid var(--border); }
     .nuvemshop-pilot-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .nuvemshop-pilot-check { border-bottom: 1px solid var(--border); }
+    .nuvemshop-pilot-item { grid-template-columns: 18px minmax(0, 1fr); }
+    .nuvemshop-pilot-item-stock { grid-column: 2; text-align: left; }
+    .nuvemshop-pilot-modal .nuvemshop-manual-actions { flex-wrap: wrap; }
     .nuvemshop-audit-section .filters-row { width: 100%; }
     .nuvemshop-audit-section .filter-select, .nuvemshop-audit-section .search-input { flex: 1; min-width: 150px; }
     .nuvemshop-pagination { align-items: stretch; flex-direction: column; }

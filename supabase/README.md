@@ -25,6 +25,7 @@ Esta pasta documenta a configuracao de seguranca usada no Supabase de producao.
 19. `19-base-sincronizacao-nuvemshop.sql`
 20. `20-auditoria-simulacao-nuvemshop.sql`
 21. `21-trava-aplicacao-piloto-nuvemshop.sql`
+22. `22-reserva-aplicacao-piloto-nuvemshop.sql`
 
 ## O que foi protegido
 
@@ -61,10 +62,11 @@ Esta pasta documenta a configuracao de seguranca usada no Supabase de producao.
 - `19-base-sincronizacao-nuvemshop.sql`: associa cada vinculo a uma loja, registra o local de estoque conferido e cria tabelas protegidas de auditoria para futuras sincronizacoes.
 - `20-auditoria-simulacao-nuvemshop.sql`: identifica simulacoes na auditoria e cria a funcao atomica usada pela Edge Function para registrar o resumo e todos os itens validados.
 - `21-trava-aplicacao-piloto-nuvemshop.sql`: adiciona o interruptor de escrita por loja, iniciado desligado, e limita o primeiro piloto a um item.
+- `22-reserva-aplicacao-piloto-nuvemshop.sql`: vincula uma aplicacao a uma simulacao recente, reserva somente um item, bloqueia repeticao e registra o resultado confirmado pelo servidor.
 - `functions/nuvemshop-oauth`: conclui a instalacao OAuth e salva o token criptografado, sem exibir a credencial.
 - `functions/nuvemshop-lgpd`: recebe os tres webhooks obrigatorios de privacidade e valida a assinatura da Nuvemshop.
 - `functions/nuvemshop-catalogo`: consulta o catalogo e os locais de estoque da Nuvemshop somente para administradores, sem alterar o estoque externo.
-- `functions/nuvemshop-sincronizacao`: recalcula a previa no servidor, verifica a prontidao do piloto e continua recusando qualquer tentativa de escrita externa nesta fase.
+- `functions/nuvemshop-sincronizacao`: recalcula a previa, verifica as protecoes e prepara a aplicacao auditada de um unico item; a escrita continua bloqueada enquanto faltarem o escopo e a liberacao explicita da loja.
 - `rollback-segundo-admin-principal.sql`: devolve o login vendas4 ao perfil funcionario em caso de necessidade.
 - `rollback-policies-abertas.sql`: volta para as policies antigas em caso de emergencia.
 
