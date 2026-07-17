@@ -41,6 +41,18 @@ function localDestination(product: Record<string, unknown>, voltage: unknown): n
   return integerOrNull(product.quantidade);
 }
 
+function stockForOffer(physicalStock: number | null, unitsPerSaleValue: unknown): number | null {
+  const unitsPerSale = integerOrNull(unitsPerSaleValue);
+  if (
+    physicalStock === null
+    || physicalStock < 0
+    || unitsPerSale === null
+    || unitsPerSale < 1
+    || unitsPerSale > 10000
+  ) return null;
+  return Math.floor(physicalStock / unitsPerSale);
+}
+
 function variantStock(variant: Record<string, unknown>, locationId: string): number | null {
   if (Array.isArray(variant.inventory_levels)) {
     const level = variant.inventory_levels
@@ -297,7 +309,7 @@ Deno.serve(async (request) => {
 
     const { data: links, error: linksError } = await supabaseAdmin
       .from("nuvemshop_vinculos")
-      .select("id, produto_id, voltagem, nuvemshop_produto_id, nuvemshop_variante_id")
+      .select("id, produto_id, voltagem, nuvemshop_produto_id, nuvemshop_variante_id, unidades_por_venda")
       .eq("store_id", storeId)
       .eq("ativo", true)
       .order("id")
@@ -435,7 +447,7 @@ Deno.serve(async (request) => {
       try {
         const { data: reservedItem, error: reservedItemError } = await supabaseAdmin
           .from("nuvemshop_sincronizacao_itens")
-          .select("id, produto_id, voltagem, nuvemshop_produto_id, nuvemshop_variante_id, estoque_anterior, estoque_destino")
+          .select("id, produto_id, voltagem, nuvemshop_produto_id, nuvemshop_variante_id, unidades_por_venda, estoque_anterior, estoque_destino")
           .eq("sincronizacao_id", applicationId)
           .single();
         if (reservedItemError || !reservedItem) {
@@ -446,7 +458,15 @@ Deno.serve(async (request) => {
         const variantId = integerOrNull(reservedItem.nuvemshop_variante_id);
         const previousStock = integerOrNull(reservedItem.estoque_anterior);
         const destinationStock = integerOrNull(reservedItem.estoque_destino);
-        if (!productId || !variantId || previousStock === null || destinationStock === null) {
+        const unitsPerSale = integerOrNull(reservedItem.unidades_por_venda);
+        if (
+          !productId
+          || !variantId
+          || previousStock === null
+          || destinationStock === null
+          || !unitsPerSale
+          || unitsPerSale < 1
+        ) {
           throw new Error("O item reservado nao possui uma variante externa explicita.");
         }
 
@@ -477,11 +497,12 @@ Deno.serve(async (request) => {
         if (localProductError || !localProduct) {
           throw new Error("Produto local reservado nao foi encontrado.");
         }
-        const currentLocalStock = localDestination(
+        const currentPhysicalStock = localDestination(
           localProduct as Record<string, unknown>,
           reservedItem.voltagem,
         );
-        if (currentLocalStock !== destinationStock) {
+        const currentOfferStock = stockForOffer(currentPhysicalStock, unitsPerSale);
+        if (currentOfferStock !== destinationStock) {
           throw new Error("O estoque local mudou depois da reserva. Gere uma nova simulacao.");
         }
 
@@ -737,7 +758,9 @@ Deno.serve(async (request) => {
     const items = links.map((link) => {
       const localProduct = localById.get(Number(link.produto_id));
       const remoteProduct = remoteById.get(Number(link.nuvemshop_produto_id));
-      const destinationStock = localProduct ? localDestination(localProduct, link.voltagem) : null;
+      const physicalStock = localProduct ? localDestination(localProduct, link.voltagem) : null;
+      const unitsPerSale = integerOrNull(link.unidades_por_venda);
+      const destinationStock = stockForOffer(physicalStock, unitsPerSale);
       const variants = Array.isArray(remoteProduct?.variants)
         ? remoteProduct.variants.map(asRecord).filter(Boolean) as Record<string, unknown>[]
         : [];
@@ -759,7 +782,9 @@ Deno.serve(async (request) => {
         error = "Produto ou variante nao encontrado na Nuvemshop.";
       } else if (destinationStock === null || destinationStock < 0) {
         status = "erro";
-        error = "Estoque local invalido.";
+        error = unitsPerSale === null || unitsPerSale < 1
+          ? "Quantidade de unidades por venda invalida."
+          : "Estoque local invalido.";
       } else if (currentStock !== null && currentStock < 0) {
         status = "erro";
         error = "Estoque externo invalido.";
@@ -776,6 +801,8 @@ Deno.serve(async (request) => {
         voltagem: link.voltagem,
         nuvemshop_produto_id: link.nuvemshop_produto_id,
         nuvemshop_variante_id: link.nuvemshop_variante_id,
+        unidades_por_venda: unitsPerSale,
+        estoque_local_base: physicalStock,
         estoque_atual: currentStock,
         estoque_destino: destinationStock,
         diferenca: currentStock === null || destinationStock === null

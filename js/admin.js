@@ -677,6 +677,35 @@ function mappedLocalStock(product, voltage) {
   return (Number(product.quantidade_110v) || 0) + (Number(product.quantidade_220v) || 0);
 }
 
+function validUnitsPerSale(value) {
+  const units = Number(value);
+  return Number.isInteger(units) && units >= 1 && units <= 10000 ? units : null;
+}
+
+function inferUnitsPerSale(row) {
+  const texts = [row?.variantLabel, row?.remoteName]
+    .map(value => String(value || '').trim())
+    .filter(Boolean);
+  for (const text of texts) {
+    const explicitUnits = text.match(/(?:^|\D)(\d{1,5})\s*(?:unidade|unidades|un|und)(?:\D|$)/i);
+    const parsed = validUnitsPerSale(explicitUnits?.[1]);
+    if (parsed) return { value: parsed, source: 'nome da oferta' };
+  }
+
+  const skuSuffix = String(row?.sku || '').trim().match(/[-_/](\d{1,5})$/);
+  const parsedSuffix = validUnitsPerSale(skuSuffix?.[1]);
+  if (parsedSuffix) return { value: parsedSuffix, source: 'final do SKU' };
+
+  return { value: 1, source: 'padrao seguro' };
+}
+
+function packageDestinationStock(localStock, unitsPerSale) {
+  const stock = Number(localStock);
+  const units = validUnitsPerSale(unitsPerSale);
+  if (!Number.isInteger(stock) || stock < 0 || !units) return null;
+  return Math.floor(stock / units);
+}
+
 function flattenNuvemshopCatalog(remoteProducts, links) {
   const rows = [];
   remoteProducts.forEach(remoteProduct => {
@@ -703,6 +732,12 @@ function flattenNuvemshopCatalog(remoteProducts, links) {
       const inferredVoltage = inferVoltage(variantLabel) || inferVoltage(remoteName);
       const localVoltage = localProduct?.tem_voltagem ? (savedLink?.voltagem || inferredVoltage) : null;
       const image = Array.isArray(remoteProduct.images) ? remoteProduct.images[0]?.src : null;
+      const unitsSuggestion = inferUnitsPerSale({
+        variantLabel,
+        remoteName,
+        sku: variant.sku || ''
+      });
+      const unitsPerSale = validUnitsPerSale(savedLink?.unidades_por_venda) || unitsSuggestion.value;
 
       rows.push({
         status,
@@ -718,7 +753,9 @@ function flattenNuvemshopCatalog(remoteProducts, links) {
         candidates,
         localStock: mappedLocalStock(localProduct, localVoltage),
         linkVoltage: localVoltage,
-        savedLinkId: savedLink?.id || null
+        savedLinkId: savedLink?.id || null,
+        unitsPerSale,
+        unitsSuggestion
       });
     });
   });
@@ -913,7 +950,7 @@ function renderNuvemshopCatalog() {
     const localStock = row.localStock == null ? '-' : row.localStock;
     const needsVoltage = row.localProduct?.tem_voltagem && !row.linkVoltage;
     const action = row.status === 'linked'
-      ? `<div class="nuvemshop-linked-actions"><span class="nuvemshop-link-confirmed">Confirmado</span><button class="nuvemshop-unlink-btn" id="nuvemshop-unlink-${row.savedLinkId}" onclick="unlinkNuvemshopLink(${row.productId}, ${row.variantId ?? 'null'})">Desfazer</button></div>`
+      ? `<div class="nuvemshop-linked-actions"><div><span class="nuvemshop-link-confirmed">Confirmado</span><div class="nuvemshop-link-units">${escapeHtml(row.unitsPerSale)} un. por venda</div></div><button class="nuvemshop-unlink-btn" id="nuvemshop-unlink-${row.savedLinkId}" onclick="unlinkNuvemshopLink(${row.productId}, ${row.variantId ?? 'null'})">Desfazer</button></div>`
       : row.status === 'matched' && !needsVoltage
         ? `<button class="nuvemshop-link-btn" id="nuvemshop-link-${row.productId}-${row.variantId || 'base'}" onclick="confirmNuvemshopLink(${row.productId}, ${row.variantId ?? 'null'})">Confirmar vinculo</button>`
         : `<button class="nuvemshop-manual-btn" onclick="openManualNuvemshopLink(${row.productId}, ${row.variantId ?? 'null'})">Vincular manualmente</button>`;
@@ -993,10 +1030,12 @@ function buildNuvemshopSyncPreviewRows() {
   return nuvemshopCatalogRows
     .filter(row => row.status === 'linked' && row.localProduct)
     .map(row => {
-      const destinationStock = Number(row.localStock);
+      const destinationStock = packageDestinationStock(row.localStock, row.unitsPerSale);
       const currentStock = row.remoteStock == null ? null : Number(row.remoteStock);
-      const difference = currentStock == null ? null : destinationStock - currentStock;
-      const previewStatus = currentStock == null
+      const difference = currentStock == null || destinationStock == null
+        ? null
+        : destinationStock - currentStock;
+      const previewStatus = currentStock == null || destinationStock == null
         ? 'uncontrolled'
         : difference === 0
           ? 'equal'
@@ -1073,7 +1112,7 @@ function renderNuvemshopSyncPreview() {
 
   const tbody = document.getElementById('nuvemshop-preview-tbody');
   if (!filteredRows.length) {
-    tbody.innerHTML = '<tr><td colspan="5" class="empty-state">Nenhum produto vinculado encontrado para este filtro.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" class="empty-state">Nenhum produto vinculado encontrado para este filtro.</td></tr>';
     return;
   }
 
@@ -1089,6 +1128,7 @@ function renderNuvemshopSyncPreview() {
     const difference = row.difference == null ? '-' : `${row.difference > 0 ? '+' : ''}${row.difference}`;
     return `<tr>
       <td><div class="nuvemshop-product-name">${escapeHtml(row.remoteName)}</div><div class="nuvemshop-variant">${escapeHtml(row.variantLabel)} | ${escapeHtml(localLabel)}</div></td>
+      <td><strong>${escapeHtml(row.unitsPerSale)} un./venda</strong><div class="nuvemshop-local-meta">Base fisica ${escapeHtml(row.localStock)}</div></td>
       <td><span class="nuvemshop-stock">${escapeHtml(currentStock)}</span></td>
       <td><span class="nuvemshop-stock">${escapeHtml(row.destinationStock)}</span></td>
       <td><span class="nuvemshop-preview-diff ${row.previewStatus}">${escapeHtml(difference)}</span></td>
@@ -1208,12 +1248,18 @@ function renderNuvemshopPilotApplication() {
   itemsElement.innerHTML = candidates.map(item => {
     const itemId = Number(item.auditoria_item_id);
     const voltage = item.voltagem || 'Unica';
+    const unitsPerSale = validUnitsPerSale(item.unidades_por_venda) || 1;
+    const physicalStock = Number.isSafeInteger(Number(item.estoque_local_base))
+      ? Number(item.estoque_local_base)
+      : null;
+    const packageRule = `${unitsPerSale} un./venda`;
+    const physicalBase = physicalStock == null ? '' : ` | Base fisica ${physicalStock}`;
     const selected = itemId === nuvemshopPilotSelectedItemId;
     return `<button type="button" class="nuvemshop-pilot-item${selected ? ' selected' : ''}" onclick="selectNuvemshopPilotItem(${itemId})">
       <input type="radio" name="nuvemshop-pilot-item" tabindex="-1"${selected ? ' checked' : ''}>
       <span>
         <span class="nuvemshop-pilot-item-name">${escapeHtml(item.produto_nome)}</span>
-        <span class="nuvemshop-pilot-item-meta">${escapeHtml(voltage)} | Item auditado ${escapeHtml(itemId)}</span>
+        <span class="nuvemshop-pilot-item-meta">${escapeHtml(voltage)} | ${escapeHtml(packageRule)}${escapeHtml(physicalBase)} | Item auditado ${escapeHtml(itemId)}</span>
       </span>
       <span class="nuvemshop-pilot-item-stock">${escapeHtml(item.estoque_atual)} para <strong>${escapeHtml(item.estoque_destino)}</strong></span>
     </button>`;
@@ -1746,7 +1792,7 @@ async function loadNuvemshopAuditHistory(force = false) {
     let items = [];
     if (historyIds.length) {
       const itemsResult = await sb.from('nuvemshop_sincronizacao_itens')
-        .select('id, sincronizacao_id, produto_id, voltagem, nuvemshop_produto_id, nuvemshop_variante_id, estoque_anterior, estoque_destino, resultado_previsto, diferenca, status, erro, processado_em')
+        .select('id, sincronizacao_id, produto_id, voltagem, nuvemshop_produto_id, nuvemshop_variante_id, unidades_por_venda, estoque_local_base, estoque_anterior, estoque_destino, resultado_previsto, diferenca, status, erro, processado_em')
         .in('sincronizacao_id', historyIds)
         .order('id', { ascending: true });
       if (itemsResult.error) throw itemsResult.error;
@@ -1897,7 +1943,7 @@ function buildNuvemshopAuditItems(row) {
   return `<div class="nuvemshop-audit-items-wrap">
     ${countMessage}
     <table class="nuvemshop-audit-items-table">
-      <thead><tr><th>Produto local</th><th>Voltagem</th><th>Estoque anterior</th><th>Destino previsto</th><th>Diferenca</th><th>Resultado</th></tr></thead>
+      <thead><tr><th>Produto local</th><th>Voltagem</th><th>Regra</th><th>Estoque anterior</th><th>Destino previsto</th><th>Diferenca</th><th>Resultado</th></tr></thead>
       <tbody>${visibleItems.map(item => {
         const product = products.find(candidate => candidate.id === item.produto_id);
         const productName = product?.nome || `Produto #${item.produto_id}`;
@@ -1906,6 +1952,7 @@ function buildNuvemshopAuditItems(row) {
         return `<tr>
           <td><strong>${escapeHtml(productName)}</strong><div class="nuvemshop-local-meta">ID ${escapeHtml(item.produto_id)}</div></td>
           <td>${escapeHtml(item.voltagem || 'Unica')}</td>
+          <td><strong>${escapeHtml(item.unidades_por_venda || 1)} un./venda</strong><div class="nuvemshop-local-meta">Base fisica ${escapeHtml(item.estoque_local_base ?? '-')}</div></td>
           <td>${escapeHtml(item.estoque_anterior ?? '-')}</td>
           <td>${escapeHtml(item.estoque_destino ?? '-')}</td>
           <td><strong class="nuvemshop-audit-difference ${escapeHtml(resultClass)}">${escapeHtml(difference)}</strong></td>
@@ -1964,10 +2011,7 @@ function toggleNuvemshopAudit(id) {
 }
 
 async function confirmNuvemshopLink(productId, variantId) {
-  const normalizedVariantId = variantId == null ? null : Number(variantId);
-  const row = nuvemshopCatalogRows.find(item =>
-    item.productId === Number(productId) && item.variantId === normalizedVariantId
-  );
+  const row = findNuvemshopCatalogRow(productId, variantId);
   if (!row || row.status !== 'matched' || !row.localProduct) {
     alert('Esta correspondencia nao esta disponivel para confirmacao.');
     return;
@@ -1977,43 +2021,7 @@ async function confirmNuvemshopLink(productId, variantId) {
     return;
   }
 
-  const voltageText = row.linkVoltage ? ` (${row.linkVoltage})` : '';
-  const confirmed = confirm(
-    `Confirmar vinculo?\n\nNuvemshop: ${row.remoteName} - ${row.variantLabel}\nLocal: ${row.localProduct.nome}${voltageText}\n\nEsta acao nao altera o estoque.`
-  );
-  if (!confirmed) return;
-
-  const button = document.getElementById(`nuvemshop-link-${row.productId}-${row.variantId || 'base'}`);
-  if (button) {
-    button.disabled = true;
-    button.textContent = 'Salvando...';
-  }
-
-  const { data, error } = await sb.from('nuvemshop_vinculos').insert({
-    store_id: nuvemshopStoreId,
-    produto_id: row.localProduct.id,
-    voltagem: row.linkVoltage || null,
-    nuvemshop_produto_id: row.productId,
-    nuvemshop_variante_id: row.variantId,
-    nuvemshop_sku: row.sku || null,
-    ativo: true
-  }).select('id').single();
-
-  if (error) {
-    console.error('Falha ao confirmar vinculo Nuvemshop', error);
-    alert(`Nao foi possivel confirmar o vinculo: ${error.message}`);
-    if (button) {
-      button.disabled = false;
-      button.textContent = 'Confirmar vinculo';
-    }
-    return;
-  }
-
-  row.status = 'linked';
-  row.savedLinkId = data.id;
-  if (nuvemshopPreviewGenerated) nuvemshopPreviewGeneratedAt = new Date();
-  renderNuvemshopCatalog();
-  showToast('green', 'Vinculo Nuvemshop confirmado. Nenhum estoque foi alterado.');
+  openNuvemshopLinkModal(row, row.localProduct, row.linkVoltage);
 }
 
 function findNuvemshopCatalogRow(productId, variantId) {
@@ -2035,6 +2043,8 @@ function restoreAutomaticNuvemshopMatch(row) {
   row.linkVoltage = localVoltage;
   row.localStock = mappedLocalStock(localProduct, localVoltage);
   row.savedLinkId = null;
+  row.unitsSuggestion = inferUnitsPerSale(row);
+  row.unitsPerSale = row.unitsSuggestion.value;
 }
 
 async function unlinkNuvemshopLink(productId, variantId) {
@@ -2096,9 +2106,16 @@ function openManualNuvemshopLink(productId, variantId) {
     return;
   }
 
+  openNuvemshopLinkModal(row);
+}
+
+function openNuvemshopLinkModal(row, presetProduct = null, presetVoltage = null) {
   nuvemshopManualRow = row;
-  nuvemshopManualVoltage = null;
+  nuvemshopManualVoltage = presetVoltage;
+  const suggestion = inferUnitsPerSale(row);
+  row.unitsSuggestion = suggestion;
   document.getElementById('nuvemshop-manual-search').value = '';
+  document.getElementById('nuvemshop-manual-units').value = suggestion.value;
   document.getElementById('nuvemshop-manual-error').textContent = '';
   document.getElementById('nuvemshop-manual-remote').innerHTML = `
     <strong>${escapeHtml(row.remoteName)}</strong>
@@ -2108,8 +2125,21 @@ function openManualNuvemshopLink(productId, variantId) {
   document.getElementById('nuvemshop-manual-voltage-wrap').style.display = 'none';
   document.querySelectorAll('#nuvemshop-manual-voltage-wrap button').forEach(button => button.classList.remove('active'));
   renderManualNuvemshopProducts();
+  if (presetProduct) {
+    const productSelect = document.getElementById('nuvemshop-manual-product');
+    productSelect.value = String(presetProduct.id);
+    updateManualNuvemshopProduct();
+    if (presetVoltage) selectManualNuvemshopVoltage(presetVoltage);
+  }
+  updateManualNuvemshopUnitsPreview();
   document.getElementById('nuvemshop-manual-modal').classList.add('open');
-  setTimeout(() => document.getElementById('nuvemshop-manual-search').focus(), 0);
+  setTimeout(() => {
+    const focusTarget = presetProduct
+      ? document.getElementById('nuvemshop-manual-units')
+      : document.getElementById('nuvemshop-manual-search');
+    focusTarget.focus();
+    if (presetProduct) focusTarget.select();
+  }, 0);
 }
 
 function closeManualNuvemshopLink() {
@@ -2155,6 +2185,7 @@ function updateManualNuvemshopProduct() {
   if (!product) {
     localInfo.textContent = 'Selecione o produto local correspondente.';
     voltageWrap.style.display = 'none';
+    updateManualNuvemshopUnitsPreview();
     return;
   }
 
@@ -2164,6 +2195,7 @@ function updateManualNuvemshopProduct() {
     : `Estoque: ${Number(product.quantidade) || 0}`;
   localInfo.innerHTML = `<strong>${escapeHtml(product.nome)}</strong><div class="nuvemshop-manual-meta">ID ${product.id} | ${category} | ${stockText}</div>`;
   voltageWrap.style.display = product.tem_voltagem ? 'block' : 'none';
+  updateManualNuvemshopUnitsPreview();
 }
 
 function selectManualNuvemshopVoltage(voltage) {
@@ -2173,6 +2205,31 @@ function selectManualNuvemshopVoltage(voltage) {
     button.classList.toggle('active', button.dataset.voltage === voltage);
   });
   document.getElementById('nuvemshop-manual-error').textContent = '';
+  updateManualNuvemshopUnitsPreview();
+}
+
+function updateManualNuvemshopUnitsPreview() {
+  const help = document.getElementById('nuvemshop-manual-units-help');
+  const units = validUnitsPerSale(document.getElementById('nuvemshop-manual-units')?.value);
+  const productId = Number(document.getElementById('nuvemshop-manual-product')?.value);
+  const localProduct = products.find(product => product.id === productId);
+  const voltage = localProduct?.tem_voltagem ? nuvemshopManualVoltage : null;
+  const physicalStock = mappedLocalStock(localProduct, voltage);
+  const destinationStock = packageDestinationStock(physicalStock, units);
+  const suggestion = nuvemshopManualRow?.unitsSuggestion || inferUnitsPerSale(nuvemshopManualRow);
+
+  if (!units) {
+    help.textContent = 'Informe um numero inteiro entre 1 e 10.000.';
+    return;
+  }
+
+  const suggestionText = suggestion?.value === units
+    ? `Sugestao obtida pelo ${suggestion.source}. `
+    : `Sugestao automatica: ${suggestion?.value || 1}. `;
+  const stockText = destinationStock == null
+    ? 'Selecione o produto e a voltagem para conferir o destino.'
+    : `Estoque fisico ${physicalStock} gera ${destinationStock} oferta(s) disponivel(is).`;
+  help.innerHTML = `${escapeHtml(suggestionText)}<strong>${escapeHtml(stockText)}</strong>`;
 }
 
 async function saveManualNuvemshopLink() {
@@ -2185,6 +2242,11 @@ async function saveManualNuvemshopLink() {
   }
   if (localProduct.tem_voltagem && !nuvemshopManualVoltage) {
     errorElement.textContent = 'Selecione 110V ou 220V.';
+    return;
+  }
+  const unitsPerSale = validUnitsPerSale(document.getElementById('nuvemshop-manual-units').value);
+  if (!unitsPerSale) {
+    errorElement.textContent = 'Informe quantas unidades fisicas esta oferta consome por venda.';
     return;
   }
 
@@ -2201,6 +2263,7 @@ async function saveManualNuvemshopLink() {
     nuvemshop_produto_id: row.productId,
     nuvemshop_variante_id: row.variantId,
     nuvemshop_sku: row.sku || null,
+    unidades_por_venda: unitsPerSale,
     ativo: true
   }).select('id').single();
 
@@ -2209,7 +2272,7 @@ async function saveManualNuvemshopLink() {
   if (error) {
     console.error('Falha ao salvar vinculo manual Nuvemshop', error);
     errorElement.textContent = error.message.includes('duplicate key')
-      ? 'Este produto local ou variante da Nuvemshop ja possui um vinculo ativo.'
+      ? 'Esta variante da Nuvemshop ja possui um vinculo ativo.'
       : `Nao foi possivel salvar: ${error.message}`;
     return;
   }
@@ -2220,6 +2283,7 @@ async function saveManualNuvemshopLink() {
   row.linkVoltage = localProduct.tem_voltagem ? nuvemshopManualVoltage : null;
   row.localStock = mappedLocalStock(localProduct, row.linkVoltage);
   row.savedLinkId = data.id;
+  row.unitsPerSale = unitsPerSale;
   closeManualNuvemshopLink();
   if (nuvemshopPreviewGenerated) nuvemshopPreviewGeneratedAt = new Date();
   renderNuvemshopCatalog();

@@ -27,6 +27,7 @@ Esta pasta documenta a configuracao de seguranca usada no Supabase de producao.
 21. `21-trava-aplicacao-piloto-nuvemshop.sql`
 22. `22-reserva-aplicacao-piloto-nuvemshop.sql`
 23. `23-janela-temporaria-piloto-nuvemshop.sql`
+24. `24-multiplicadores-variantes-nuvemshop.sql`
 
 ## O que foi protegido
 
@@ -65,6 +66,7 @@ Esta pasta documenta a configuracao de seguranca usada no Supabase de producao.
 - `21-trava-aplicacao-piloto-nuvemshop.sql`: adiciona o interruptor de escrita por loja, iniciado desligado, e limita o primeiro piloto a um item.
 - `22-reserva-aplicacao-piloto-nuvemshop.sql`: vincula uma aplicacao a uma simulacao recente, reserva somente um item, bloqueia repeticao e registra o resultado confirmado pelo servidor.
 - `23-janela-temporaria-piloto-nuvemshop.sql`: troca o interruptor manual por uma janela auditada de cinco minutos, bloqueia aplicacoes fora do prazo e desliga a escrita depois da primeira tentativa.
+- `24-multiplicadores-variantes-nuvemshop.sql`: permite varias ofertas externas para o mesmo produto fisico, registra quantas unidades cada venda consome e recalcula o estoque externo por divisao inteira sem alterar os vinculos existentes.
 - `functions/nuvemshop-oauth`: conclui a instalacao OAuth e salva o token criptografado, sem exibir a credencial.
 - `functions/nuvemshop-lgpd`: recebe os tres webhooks obrigatorios de privacidade e valida a assinatura da Nuvemshop.
 - `functions/nuvemshop-catalogo`: consulta o catalogo e os locais de estoque da Nuvemshop somente para administradores, sem alterar o estoque externo.
