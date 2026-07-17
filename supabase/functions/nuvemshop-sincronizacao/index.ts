@@ -4,6 +4,7 @@ import { decryptToken, requiredEnv } from "../_shared/nuvemshop.ts";
 
 const USER_AGENT = "Conferencia de Estoque PDS (comercial@comercial.pontodasublimacao.com.br)";
 const PILOT_CONFIRMATION = "APLICAR 1 ITEM";
+const PILOT_WINDOW_CONFIRMATION = "LIBERAR PILOTO POR 5 MINUTOS";
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const wait = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
@@ -22,6 +23,13 @@ function hasScope(value: unknown, expectedScope: string): boolean {
     .split(/[\s,]+/)
     .map((scope) => scope.trim().toLowerCase())
     .includes(expectedScope.toLowerCase());
+}
+
+function isPilotWindowActive(connection: Record<string, unknown>): boolean {
+  const expiresAt = new Date(String(connection.escrita_habilitada_ate || "")).getTime();
+  return connection.escrita_habilitada === true
+    && Number.isFinite(expiresAt)
+    && expiresAt > Date.now();
 }
 
 function localDestination(product: Record<string, unknown>, voltage: unknown): number | null {
@@ -139,6 +147,27 @@ async function finalizePilot(
   }
 }
 
+async function disablePilotWindow(
+  supabaseAdmin: ReturnType<typeof createClient>,
+  storeId: number,
+  auditId: string | null,
+  userId: string,
+): Promise<void> {
+  const { error } = await supabaseAdmin.rpc(
+    "configurar_janela_piloto_nuvemshop",
+    {
+      p_store_id: storeId,
+      p_simulacao_id: auditId,
+      p_solicitado_por: userId,
+      p_habilitar: false,
+      p_confirmacao: null,
+    },
+  );
+  if (error) {
+    console.error("Falha ao fechar janela do piloto", error.message);
+  }
+}
+
 async function loadRemoteProducts(storeId: number, accessToken: string): Promise<unknown[]> {
   const products: unknown[] = [];
   const perPage = 200;
@@ -193,7 +222,13 @@ Deno.serve(async (request) => {
     const requestedAuditId = String(payload?.auditoria_id || "");
     const requestedAuditItemId = integerOrNull(payload?.item_auditoria_id);
     const requestedConfirmation = String(payload?.confirmacao || "");
-    if (!["simular", "verificar_piloto", "aplicar_piloto"].includes(operationMode)) {
+    if (![
+      "simular",
+      "verificar_piloto",
+      "habilitar_piloto",
+      "desabilitar_piloto",
+      "aplicar_piloto",
+    ].includes(operationMode)) {
       return jsonResponse({ error: "Modo de operacao nao permitido." }, 400, headers);
     }
     if (!Number.isSafeInteger(storeId) || storeId <= 0) {
@@ -222,13 +257,44 @@ Deno.serve(async (request) => {
     });
     const { data: connection, error: connectionError } = await supabaseAdmin
       .from("nuvemshop_conexoes")
-      .select("store_id, token_cifrado, token_iv, escopos, local_estoque_id, local_estoque_nome, escrita_habilitada, limite_aplicacao")
+      .select("store_id, token_cifrado, token_iv, escopos, local_estoque_id, local_estoque_nome, escrita_habilitada, escrita_habilitada_ate, escrita_simulacao_id, escrita_habilitada_por, limite_aplicacao")
       .eq("store_id", storeId)
       .maybeSingle();
     if (connectionError) throw connectionError;
     if (!connection) {
       return jsonResponse({ error: "Loja Nuvemshop nao conectada." }, 409, headers);
     }
+
+    if (operationMode === "desabilitar_piloto") {
+      const { error: windowError } = await supabaseAdmin.rpc(
+        "configurar_janela_piloto_nuvemshop",
+        {
+          p_store_id: storeId,
+          p_simulacao_id: UUID_PATTERN.test(requestedAuditId) ? requestedAuditId : null,
+          p_solicitado_por: userResult.data.user.id,
+          p_habilitar: false,
+          p_confirmacao: null,
+        },
+      );
+      if (windowError) {
+        console.error("Desligamento da janela do piloto recusado", windowError.message);
+        return jsonResponse({
+          error: "Nao foi possivel confirmar o desligamento da janela.",
+          escrita_executada: false,
+        }, 409, { ...headers, "Cache-Control": "no-store" });
+      }
+
+      return jsonResponse({
+        modo: "janela_piloto_desabilitada",
+        store_id: storeId,
+        auditoria_id: UUID_PATTERN.test(requestedAuditId) ? requestedAuditId : null,
+        escrita_habilitada: false,
+        escrita_habilitada_ate: null,
+        limite_itens: 1,
+        escrita_executada: false,
+      }, 200, { ...headers, "Cache-Control": "no-store" });
+    }
+
     const { data: links, error: linksError } = await supabaseAdmin
       .from("nuvemshop_vinculos")
       .select("id, produto_id, voltagem, nuvemshop_produto_id, nuvemshop_variante_id")
@@ -237,6 +303,55 @@ Deno.serve(async (request) => {
       .order("id")
       .limit(501);
     if (linksError) throw linksError;
+
+    if (operationMode === "habilitar_piloto") {
+      if (!UUID_PATTERN.test(requestedAuditId)) {
+        return jsonResponse({
+          error: "Informe a simulacao recente que autorizara a janela.",
+          escrita_executada: false,
+        }, 400, headers);
+      }
+      if (requestedConfirmation !== PILOT_WINDOW_CONFIRMATION) {
+        return jsonResponse({
+          error: `Digite exatamente "${PILOT_WINDOW_CONFIRMATION}".`,
+          escrita_executada: false,
+        }, 400, headers);
+      }
+      if (!links?.length || links.length > 500) {
+        return jsonResponse({
+          error: "Os vinculos ativos nao atendem ao limite de seguranca.",
+          escrita_executada: false,
+        }, 409, headers);
+      }
+
+      const { data: expiresAt, error: windowError } = await supabaseAdmin.rpc(
+        "configurar_janela_piloto_nuvemshop",
+        {
+          p_store_id: storeId,
+          p_simulacao_id: requestedAuditId,
+          p_solicitado_por: userResult.data.user.id,
+          p_habilitar: true,
+          p_confirmacao: requestedConfirmation,
+        },
+      );
+      if (windowError) {
+        console.error("Janela do piloto recusada", windowError.message);
+        return jsonResponse({
+          error: "A janela nao foi liberada. Gere uma nova validacao e confira as protecoes.",
+          escrita_executada: false,
+        }, 409, { ...headers, "Cache-Control": "no-store" });
+      }
+
+      return jsonResponse({
+        modo: "janela_piloto_habilitada",
+        store_id: storeId,
+        auditoria_id: requestedAuditId,
+        escrita_habilitada: true,
+        escrita_habilitada_ate: expiresAt,
+        limite_itens: 1,
+        escrita_executada: false,
+      }, 200, { ...headers, "Cache-Control": "no-store" });
+    }
 
     if (operationMode === "aplicar_piloto") {
       if (!UUID_PATTERN.test(requestedAuditId) || !requestedAuditItemId || requestedAuditItemId <= 0) {
@@ -259,8 +374,14 @@ Deno.serve(async (request) => {
       if (!connection.local_estoque_id) {
         blockers.push("O local de estoque nao esta confirmado.");
       }
-      if (connection.escrita_habilitada !== true) {
-        blockers.push("O interruptor de escrita da loja esta desligado.");
+      if (!isPilotWindowActive(connection as Record<string, unknown>)) {
+        blockers.push("A janela temporaria de escrita esta fechada ou expirada.");
+      }
+      if (String(connection.escrita_simulacao_id || "") !== requestedAuditId) {
+        blockers.push("A janela temporaria nao pertence a esta simulacao.");
+      }
+      if (String(connection.escrita_habilitada_por || "") !== userResult.data.user.id) {
+        blockers.push("A janela temporaria nao pertence a este administrador.");
       }
       if (integerOrNull(connection.limite_aplicacao) !== 1) {
         blockers.push("O limite do piloto precisa ser exatamente um item.");
@@ -269,6 +390,14 @@ Deno.serve(async (request) => {
         blockers.push("Os vinculos ativos nao atendem ao limite de seguranca.");
       }
       if (blockers.length) {
+        if (isPilotWindowActive(connection as Record<string, unknown>)) {
+          await disablePilotWindow(
+            supabaseAdmin,
+            storeId,
+            UUID_PATTERN.test(requestedAuditId) ? requestedAuditId : null,
+            userResult.data.user.id,
+          );
+        }
         return jsonResponse({
           error: "Aplicacao piloto bloqueada pelas protecoes.",
           bloqueios: blockers,
@@ -289,6 +418,12 @@ Deno.serve(async (request) => {
       );
       if (reservationError || typeof applicationId !== "string" || !UUID_PATTERN.test(applicationId)) {
         console.error("Reserva do piloto recusada", reservationError?.message || "ID ausente");
+        await disablePilotWindow(
+          supabaseAdmin,
+          storeId,
+          requestedAuditId,
+          userResult.data.user.id,
+        );
         return jsonResponse({
           error: "A reserva foi recusada. Gere uma nova simulacao e confira as protecoes.",
           escrita_executada: false,
@@ -317,17 +452,19 @@ Deno.serve(async (request) => {
 
         const { data: latestConnection, error: latestConnectionError } = await supabaseAdmin
           .from("nuvemshop_conexoes")
-          .select("token_cifrado, token_iv, escopos, local_estoque_id, escrita_habilitada, limite_aplicacao")
+          .select("token_cifrado, token_iv, escopos, local_estoque_id, escrita_habilitada, escrita_habilitada_ate, escrita_simulacao_id, escrita_habilitada_por, limite_aplicacao")
           .eq("store_id", storeId)
           .single();
         if (latestConnectionError || !latestConnection) {
           throw new Error("A conexao nao pode ser revalidada.");
         }
         if (
-          latestConnection.escrita_habilitada !== true
+          !isPilotWindowActive(latestConnection as Record<string, unknown>)
           || integerOrNull(latestConnection.limite_aplicacao) !== 1
           || !hasScope(latestConnection.escopos, "write_products")
           || String(latestConnection.local_estoque_id || "") !== String(connection.local_estoque_id)
+          || String(latestConnection.escrita_simulacao_id || "") !== requestedAuditId
+          || String(latestConnection.escrita_habilitada_por || "") !== userResult.data.user.id
         ) {
           throw new Error("As protecoes da loja mudaram depois da reserva.");
         }
@@ -484,7 +621,10 @@ Deno.serve(async (request) => {
       const writeScopeGranted = hasScope(connection.escopos, "write_products");
       const locationConfirmed = Boolean(connection.local_estoque_id);
       const linksWithinLimit = Boolean(links?.length) && links.length <= 500;
-      const writeEnabled = connection.escrita_habilitada === true;
+      const writeWindowActive = isPilotWindowActive(connection as Record<string, unknown>);
+      const writeWindowMatches = writeWindowActive
+        && String(connection.escrita_simulacao_id || "") === requestedAuditId
+        && String(connection.escrita_habilitada_por || "") === userResult.data.user.id;
       const applicationLimit = integerOrNull(connection.limite_aplicacao) || 1;
       const safePilotLimit = applicationLimit === 1;
       const blockers: string[] = [];
@@ -518,7 +658,17 @@ Deno.serve(async (request) => {
       if (links && links.length > 500) blockers.push("A quantidade de vinculos excede o limite de seguranca.");
       if (!safePilotLimit) blockers.push("O limite do piloto precisa permanecer em um item.");
       if (!simulationValid) blockers.push("A simulacao precisa ser recente, concluida e sem falhas.");
-      if (!writeEnabled) blockers.push("O interruptor de escrita da loja permanece desligado.");
+      if (!writeWindowActive) {
+        blockers.push("A janela temporaria de escrita permanece fechada ou expirada.");
+      } else if (!writeWindowMatches) {
+        blockers.push("A janela temporaria pertence a outra simulacao ou administrador.");
+      }
+
+      const prerequisitesMet = writeScopeGranted
+        && locationConfirmed
+        && linksWithinLimit
+        && safePilotLimit
+        && simulationValid;
 
       return jsonResponse({
         modo: "verificacao_piloto",
@@ -538,13 +688,13 @@ Deno.serve(async (request) => {
         auditoria_id: requestedAuditId || null,
         simulacao_valida: simulationValid,
         simulacao_expira_em: simulationExpiresAt,
-        escrita_habilitada: writeEnabled,
+        janela_ativa: writeWindowActive,
+        escrita_habilitada: writeWindowMatches,
+        escrita_habilitada_ate: writeWindowActive ? connection.escrita_habilitada_ate : null,
+        confirmacao_liberacao_exigida: PILOT_WINDOW_CONFIRMATION,
         confirmacao_exigida: PILOT_CONFIRMATION,
-        requisitos_atendidos: writeScopeGranted
-          && locationConfirmed
-          && linksWithinLimit
-          && safePilotLimit
-          && simulationValid,
+        requisitos_atendidos: prerequisitesMet,
+        pode_habilitar: prerequisitesMet && !writeWindowActive,
         pronto_para_aplicar: blockers.length === 0,
         bloqueios: blockers,
         escrita_executada: false,

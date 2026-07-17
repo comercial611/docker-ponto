@@ -22,6 +22,8 @@ let nuvemshopPilotReadiness = null;
 let nuvemshopPilotSelectedItemId = null;
 let nuvemshopPilotApplying = false;
 let nuvemshopPilotApplicationLocked = false;
+let nuvemshopPilotWindowBusy = false;
+let nuvemshopPilotWindowTimer = null;
 let nuvemshopAuditRows = [];
 let nuvemshopAuditLoaded = false;
 let nuvemshopAuditUser = null;
@@ -1064,6 +1066,9 @@ function openNuvemshopPilotModal() {
   nuvemshopPilotSelectedItemId = null;
   nuvemshopPilotApplying = false;
   nuvemshopPilotApplicationLocked = false;
+  nuvemshopPilotWindowBusy = false;
+  if (nuvemshopPilotWindowTimer) clearTimeout(nuvemshopPilotWindowTimer);
+  nuvemshopPilotWindowTimer = null;
   document.getElementById('nuvemshop-pilot-summary').innerHTML =
     `A verificacao usara a auditoria <strong>${escapeHtml(nuvemshopServerSimulation.auditoria_id)}</strong> como referencia.<br>` +
     'A verificacao inicial nao altera estoques. A aplicacao so sera liberada depois de todas as protecoes.';
@@ -1072,6 +1077,10 @@ function openNuvemshopPilotModal() {
   result.innerHTML = '';
   const application = document.getElementById('nuvemshop-pilot-application');
   application.className = 'nuvemshop-pilot-application';
+  const windowSection = document.getElementById('nuvemshop-pilot-window');
+  windowSection.className = 'nuvemshop-pilot-window';
+  document.getElementById('nuvemshop-pilot-window-confirmation').value = '';
+  document.getElementById('nuvemshop-pilot-window-status').textContent = '';
   document.getElementById('nuvemshop-pilot-items').innerHTML = '';
   document.getElementById('nuvemshop-pilot-confirmation').value = '';
   document.getElementById('nuvemshop-pilot-application-note').textContent = '';
@@ -1085,11 +1094,18 @@ function openNuvemshopPilotModal() {
   const applyButton = document.getElementById('nuvemshop-pilot-apply');
   applyButton.disabled = true;
   applyButton.textContent = 'Aplicar 1 item';
+  updateNuvemshopPilotWindowButtons();
   document.getElementById('nuvemshop-pilot-modal').classList.add('open');
 }
 
-function closeNuvemshopPilotModal() {
-  if (nuvemshopPilotApplying) return;
+async function closeNuvemshopPilotModal() {
+  if (nuvemshopPilotApplying || nuvemshopPilotWindowBusy) return;
+  if (nuvemshopPilotReadiness?.janela_ativa) {
+    const disabled = await runNuvemshopPilotWindow(false);
+    if (!disabled) return;
+  }
+  if (nuvemshopPilotWindowTimer) clearTimeout(nuvemshopPilotWindowTimer);
+  nuvemshopPilotWindowTimer = null;
   document.getElementById('nuvemshop-pilot-modal').classList.remove('open');
 }
 
@@ -1134,9 +1150,13 @@ function renderNuvemshopPilotApplication() {
   }).join('');
 
   note.className = `nuvemshop-pilot-application-note${nuvemshopPilotReadiness?.pronto_para_aplicar ? ' ready' : ''}`;
-  note.textContent = nuvemshopPilotReadiness?.pronto_para_aplicar
-    ? `Escolha um item e digite exatamente "${confirmation}". O servidor ainda repetira todas as verificacoes antes da escrita.`
-    : 'A selecao pode ser conferida, mas a aplicacao permanece desativada enquanto houver protecoes bloqueadas.';
+  if (nuvemshopPilotReadiness?.pronto_para_aplicar) {
+    note.textContent = `Escolha um item e digite exatamente "${confirmation}". O servidor ainda repetira todas as verificacoes antes da escrita.`;
+  } else if (nuvemshopPilotReadiness?.pode_habilitar) {
+    note.textContent = 'Selecione o item, libere a janela temporaria e depois confirme a aplicacao.';
+  } else {
+    note.textContent = 'A selecao pode ser conferida, mas a aplicacao permanece desativada enquanto houver protecoes bloqueadas.';
+  }
   updateNuvemshopPilotApplyButton();
 }
 
@@ -1179,14 +1199,167 @@ async function readNuvemshopFunctionFailure(error, fallbackMessage) {
   };
 }
 
+function updateNuvemshopPilotWindowButtons() {
+  const enableButton = document.getElementById('nuvemshop-pilot-window-enable');
+  const disableButton = document.getElementById('nuvemshop-pilot-window-disable');
+  const input = document.getElementById('nuvemshop-pilot-window-confirmation');
+  if (!enableButton || !disableButton || !input) return;
+
+  const active = nuvemshopPilotReadiness?.janela_ativa === true;
+  const confirmation = nuvemshopPilotReadiness?.confirmacao_liberacao_exigida ||
+    'LIBERAR PILOTO POR 5 MINUTOS';
+  input.disabled = active || nuvemshopPilotWindowBusy || nuvemshopPilotApplying;
+  enableButton.disabled = active ||
+    !nuvemshopPilotReadiness?.pode_habilitar ||
+    input.value !== confirmation ||
+    nuvemshopPilotWindowBusy ||
+    nuvemshopPilotApplying;
+  disableButton.disabled = !active || nuvemshopPilotWindowBusy || nuvemshopPilotApplying;
+}
+
+function renderNuvemshopPilotWindow(data) {
+  const section = document.getElementById('nuvemshop-pilot-window');
+  const input = document.getElementById('nuvemshop-pilot-window-confirmation');
+  const status = document.getElementById('nuvemshop-pilot-window-status');
+  const confirmation = data?.confirmacao_liberacao_exigida ||
+    'LIBERAR PILOTO POR 5 MINUTOS';
+  const active = data?.janela_ativa === true;
+
+  section.classList.add('visible');
+  input.placeholder = confirmation;
+  if (active && data.escrita_habilitada_ate) {
+    const expiresAt = new Date(data.escrita_habilitada_ate);
+    status.className = 'nuvemshop-pilot-window-status active';
+    status.textContent = `Janela ativa ate ${expiresAt.toLocaleTimeString('pt-BR')}. Ela sera fechada apos a primeira tentativa.`;
+
+    if (nuvemshopPilotWindowTimer) clearTimeout(nuvemshopPilotWindowTimer);
+    const remaining = expiresAt.getTime() - Date.now();
+    if (remaining > 0) {
+      nuvemshopPilotWindowTimer = setTimeout(() => {
+        nuvemshopPilotWindowTimer = null;
+        if (document.getElementById('nuvemshop-pilot-modal').classList.contains('open')) {
+          runNuvemshopPilotReadiness();
+        }
+      }, Math.min(remaining + 300, 5 * 60 * 1000));
+    }
+  } else {
+    if (nuvemshopPilotWindowTimer) clearTimeout(nuvemshopPilotWindowTimer);
+    nuvemshopPilotWindowTimer = null;
+    status.className = `nuvemshop-pilot-window-status${data?.pode_habilitar ? ' ready' : ''}`;
+    status.textContent = data?.pode_habilitar
+      ? `Todas as protecoes anteriores foram atendidas. Digite exatamente "${confirmation}" para abrir a janela.`
+      : 'A janela so podera ser liberada depois que os demais requisitos estiverem atendidos.';
+  }
+  updateNuvemshopPilotWindowButtons();
+}
+
+async function runNuvemshopPilotWindow(enableWindow) {
+  const errorElement = document.getElementById('nuvemshop-pilot-error');
+  const input = document.getElementById('nuvemshop-pilot-window-confirmation');
+  const confirmation = nuvemshopPilotReadiness?.confirmacao_liberacao_exigida ||
+    'LIBERAR PILOTO POR 5 MINUTOS';
+
+  if (nuvemshopPilotWindowBusy || nuvemshopPilotApplying) return false;
+  if (enableWindow) {
+    if (!nuvemshopPilotReadiness?.pode_habilitar) {
+      errorElement.textContent = 'Verifique novamente as protecoes antes de liberar a janela.';
+      return false;
+    }
+    if (input.value !== confirmation) {
+      errorElement.textContent = `Digite exatamente "${confirmation}".`;
+      return false;
+    }
+  }
+
+  nuvemshopPilotWindowBusy = true;
+  errorElement.textContent = '';
+  updateNuvemshopPilotWindowButtons();
+
+  try {
+    const { data, error } = await sb.functions.invoke('nuvemshop-sincronizacao', {
+      body: {
+        modo: enableWindow ? 'habilitar_piloto' : 'desabilitar_piloto',
+        store_id: nuvemshopStoreId,
+        auditoria_id: nuvemshopServerSimulation?.auditoria_id,
+        confirmacao: enableWindow ? confirmation : ''
+      }
+    });
+    if (error) {
+      const failure = await readNuvemshopFunctionFailure(
+        error,
+        enableWindow
+          ? 'Nao foi possivel liberar a janela temporaria.'
+          : 'Nao foi possivel desligar a janela temporaria.'
+      );
+      throw new Error(failure.message);
+    }
+    const expectedMode = enableWindow
+      ? 'janela_piloto_habilitada'
+      : 'janela_piloto_desabilitada';
+    if (
+      data?.modo !== expectedMode ||
+      data?.escrita_executada !== false ||
+      data?.escrita_habilitada !== enableWindow
+    ) {
+      throw new Error('O servidor retornou um estado inesperado para a janela.');
+    }
+
+    input.value = '';
+    if (nuvemshopPilotReadiness) {
+      nuvemshopPilotReadiness.janela_ativa = enableWindow;
+      nuvemshopPilotReadiness.escrita_habilitada = enableWindow;
+      nuvemshopPilotReadiness.escrita_habilitada_ate =
+        enableWindow ? data.escrita_habilitada_ate : null;
+      nuvemshopPilotReadiness.pode_habilitar =
+        !enableWindow && nuvemshopPilotReadiness.requisitos_atendidos === true;
+      nuvemshopPilotReadiness.pronto_para_aplicar =
+        enableWindow && nuvemshopPilotReadiness.requisitos_atendidos === true;
+      const blockers = Array.isArray(nuvemshopPilotReadiness.bloqueios)
+        ? nuvemshopPilotReadiness.bloqueios.filter(
+          blocker => !String(blocker).toLowerCase().includes('janela temporaria')
+        )
+        : [];
+      if (!enableWindow) {
+        blockers.push('A janela temporaria de escrita permanece fechada ou expirada.');
+      }
+      nuvemshopPilotReadiness.bloqueios = blockers;
+    }
+    showToast(
+      'green',
+      enableWindow
+        ? 'Janela de escrita liberada por ate cinco minutos.'
+        : 'Janela de escrita desligada.'
+    );
+    if (nuvemshopPilotReadiness) {
+      renderNuvemshopPilotReadiness(nuvemshopPilotReadiness);
+      renderNuvemshopPilotApplication();
+    }
+    return true;
+  } catch (error) {
+    console.error('Falha ao configurar janela do piloto', error);
+    errorElement.textContent = error?.message || 'Nao foi possivel configurar a janela do piloto.';
+    return false;
+  } finally {
+    nuvemshopPilotWindowBusy = false;
+    updateNuvemshopPilotWindowButtons();
+  }
+}
+
 function renderNuvemshopPilotReadiness(data) {
+  const windowExpiresAt = data.escrita_habilitada_ate
+    ? new Date(data.escrita_habilitada_ate).toLocaleTimeString('pt-BR')
+    : null;
   const checks = [
     { label: 'Simulacao recente', ok: data.simulacao_valida, value: data.simulacao_valida ? 'Valida' : 'Invalida' },
     { label: 'Escopo de escrita', ok: data.escopo_escrita, value: data.escopo_escrita ? 'Autorizado' : 'Ausente' },
     { label: 'Local de estoque', ok: data.local_confirmado, value: data.local_confirmado ? 'Confirmado' : 'Pendente' },
     { label: 'Vinculos ativos', ok: data.vinculos_dentro_limite, value: String(data.vinculos_ativos ?? 0) },
     { label: 'Limite do piloto', ok: data.limite_seguro, value: `${data.limite_itens ?? '-'} item` },
-    { label: 'Interruptor', ok: data.escrita_habilitada, value: data.escrita_habilitada ? 'Ligado' : 'Desligado' }
+    {
+      label: 'Janela de escrita',
+      ok: data.escrita_habilitada,
+      value: data.escrita_habilitada ? `Ate ${windowExpiresAt}` : 'Fechada'
+    }
   ];
   const blockers = Array.isArray(data.bloqueios) ? data.bloqueios : [];
   const result = document.getElementById('nuvemshop-pilot-result');
@@ -1203,6 +1376,7 @@ function renderNuvemshopPilotReadiness(data) {
   </div>
   ${blockers.length ? `<div class="nuvemshop-pilot-blockers">${blockers.map(blocker => `<div>${escapeHtml(blocker)}</div>`).join('')}</div>` : ''}`;
   result.classList.add('visible');
+  renderNuvemshopPilotWindow(data);
 }
 
 async function runNuvemshopPilotReadiness() {
@@ -1279,20 +1453,22 @@ async function runNuvemshopPilotApplication() {
     if (error) {
       const failure = await readNuvemshopFunctionFailure(error, 'Nao foi possivel concluir a aplicacao piloto.');
       const terminalAttempt = Boolean(failure.payload?.aplicacao_id);
-      if (terminalAttempt) nuvemshopPilotApplicationLocked = true;
+      nuvemshopPilotApplicationLocked = true;
+      if (nuvemshopPilotReadiness) {
+        nuvemshopPilotReadiness.janela_ativa = false;
+        nuvemshopPilotReadiness.escrita_habilitada = false;
+        nuvemshopPilotReadiness.escrita_habilitada_ate = null;
+        nuvemshopPilotReadiness.pode_habilitar = false;
+        renderNuvemshopPilotReadiness(nuvemshopPilotReadiness);
+      }
       const blockers = Array.isArray(failure.payload?.bloqueios) ? failure.payload.bloqueios : [];
       resultElement.className = `nuvemshop-pilot-application-result visible ${terminalAttempt ? 'warning' : 'error'}`;
       resultElement.innerHTML = `${escapeHtml(failure.message)}` +
         `${blockers.length ? `<br>${blockers.map(item => escapeHtml(item)).join('<br>')}` : ''}` +
-        `${terminalAttempt ? '<br>Nao repita esta tentativa. Confira a auditoria e gere uma nova validacao.' : ''}`;
-      if (terminalAttempt) {
-        nuvemshopServerSimulation = null;
-        nuvemshopPilotReadiness = null;
-        renderNuvemshopSyncPreview();
-      } else {
-        nuvemshopPilotReadiness = null;
-        renderNuvemshopPilotApplication();
-      }
+        '<br>A janela foi encerrada. Nao repita a tentativa; confira a auditoria e gere uma nova validacao.';
+      nuvemshopServerSimulation = null;
+      nuvemshopPilotReadiness = null;
+      renderNuvemshopSyncPreview();
       return;
     }
     if (data?.modo !== 'aplicacao_piloto' || data?.resultado !== 'concluida' || data?.escrita_executada !== true) {
@@ -1300,11 +1476,19 @@ async function runNuvemshopPilotApplication() {
     }
 
     nuvemshopPilotApplicationLocked = true;
+    if (nuvemshopPilotReadiness) {
+      nuvemshopPilotReadiness.janela_ativa = false;
+      nuvemshopPilotReadiness.escrita_habilitada = false;
+      nuvemshopPilotReadiness.escrita_habilitada_ate = null;
+      nuvemshopPilotReadiness.pode_habilitar = false;
+      renderNuvemshopPilotReadiness(nuvemshopPilotReadiness);
+    }
     resultElement.className = 'nuvemshop-pilot-application-result visible success';
     resultElement.innerHTML =
       `<strong>Aplicacao confirmada.</strong><br>` +
       `Estoque Nuvemshop: ${escapeHtml(data.estoque_anterior)} para ${escapeHtml(data.estoque_confirmado)}.<br>` +
       `Auditoria: ${escapeHtml(data.aplicacao_id)}`;
+    button.textContent = 'Aplicacao concluida';
     showToast('green', 'Um item foi aplicado e confirmado na Nuvemshop.');
     nuvemshopAuditPage = 1;
     loadNuvemshopAuditHistory(true);
@@ -1312,6 +1496,13 @@ async function runNuvemshopPilotApplication() {
   } catch (error) {
     console.error('Falha inesperada na aplicacao piloto Nuvemshop', error);
     nuvemshopPilotApplicationLocked = true;
+    if (nuvemshopPilotReadiness) {
+      nuvemshopPilotReadiness.janela_ativa = false;
+      nuvemshopPilotReadiness.escrita_habilitada = false;
+      nuvemshopPilotReadiness.escrita_habilitada_ate = null;
+      nuvemshopPilotReadiness.pode_habilitar = false;
+      renderNuvemshopPilotReadiness(nuvemshopPilotReadiness);
+    }
     nuvemshopServerSimulation = null;
     nuvemshopPilotReadiness = null;
     renderNuvemshopSyncPreview();
