@@ -3,6 +3,7 @@ let newQtys = {};       // { id: qty }                  -> produtos sem voltagem
 let newQtysVolt = {};   // { id: { v110: x, v220: y } }  -> produtos com voltagem
 let userEmail = null;
 let realtimeChannel = null;
+let activeStatusFilter = 'all';
 
 async function checkSession() {
   const { data: { session } } = await sb.auth.getSession();
@@ -78,14 +79,71 @@ function getStatus(p) {
   return { cls: 'ok', label: 'OK' };
 }
 
+function setStatusFilter(status) {
+  activeStatusFilter = status;
+  document.querySelectorAll('.status-filter').forEach(button => {
+    const isActive = button.dataset.status === status;
+    button.classList.toggle('active', isActive);
+    button.setAttribute('aria-pressed', String(isActive));
+  });
+  renderCards();
+}
+
+function updateDashboard() {
+  const counts = { all: products.length, ok: 0, low: 0, out: 0 };
+  products.forEach(product => {
+    counts[getStatus(product).cls]++;
+  });
+
+  ['all', 'ok', 'low', 'out'].forEach(status => {
+    const filterCount = document.getElementById(`filter-count-${status}`);
+    if (filterCount) filterCount.textContent = counts[status];
+  });
+
+  const statTotal = document.getElementById('stat-total');
+  const statOk = document.getElementById('stat-ok');
+  const statLow = document.getElementById('stat-low');
+  const statOut = document.getElementById('stat-out');
+  if (statTotal) statTotal.textContent = counts.all;
+  if (statOk) statOk.textContent = counts.ok;
+  if (statLow) statLow.textContent = counts.low;
+  if (statOut) statOut.textContent = counts.out;
+}
+
+function productSearchText(product) {
+  return [
+    product.nome,
+    product.codigo_fabricante,
+    product.codigo_interno,
+    product.codigo_referencia,
+    product.codigo_barras,
+    product.codigo_fabricante_110v,
+    product.codigo_fabricante_220v,
+    product.codigo_interno_110v,
+    product.codigo_interno_220v,
+    product.codigo_referencia_110v,
+    product.codigo_referencia_220v,
+    product.codigo_barras_110v,
+    product.codigo_barras_220v
+  ].filter(Boolean).join(' ').toLowerCase();
+}
+
 function renderCards() {
-  const q = document.getElementById('search-input').value.toLowerCase();
-  const filtered = products.filter(p =>
-    p.nome.toLowerCase().includes(q) ||
-    (p.codigo_fabricante||'').toLowerCase().includes(q) ||
-    (p.codigo_interno||'').toLowerCase().includes(q) ||
-    (p.codigo_referencia||'').toLowerCase().includes(q)
-  );
+  updateDashboard();
+
+  const searchInput = document.getElementById('search-input');
+  const q = (searchInput?.value || '').trim().toLowerCase();
+  const filtered = products.filter(product => {
+    const matchesSearch = !q || productSearchText(product).includes(q);
+    const matchesStatus = activeStatusFilter === 'all' || getStatus(product).cls === activeStatusFilter;
+    return matchesSearch && matchesStatus;
+  });
+
+  const visibleCount = document.getElementById('visible-products-count');
+  if (visibleCount) {
+    visibleCount.textContent = `${filtered.length} ${filtered.length === 1 ? 'produto exibido' : 'produtos exibidos'}`;
+  }
+
   const el = document.getElementById('products-list');
   if (!filtered.length) { el.innerHTML = '<div class="empty-state">Nenhum produto encontrado.</div>'; return; }
 
@@ -98,8 +156,14 @@ function renderCards() {
       : `<div class="prod-img-placeholder">📦</div>`;
 
     const codes = [];
-    if (p.codigo_fabricante) codes.push(`Fab: ${p.codigo_fabricante}`);
-    if (p.codigo_interno) codes.push(`Int: ${p.codigo_interno}`);
+    if (p.tem_voltagem) {
+      if (p.codigo_interno_110v) codes.push(`Int: ${p.codigo_interno_110v} (110V)`);
+      if (p.codigo_interno_220v) codes.push(`Int: ${p.codigo_interno_220v} (220V)`);
+      if (p.codigo_referencia_110v) codes.push(`Ref: ${p.codigo_referencia_110v} (110V)`);
+      if (p.codigo_referencia_220v) codes.push(`Ref: ${p.codigo_referencia_220v} (220V)`);
+    }
+    if (!codes.length && p.codigo_fabricante) codes.push(`Fab: ${p.codigo_fabricante}`);
+    if (!codes.length && p.codigo_interno) codes.push(`Int: ${p.codigo_interno}`);
     if (p.codigo_referencia) codes.push(`Ref: ${p.codigo_referencia}`);
     const codesHTML = codes.length
       ? `<div class="prod-codes">${codes.map(c => `<span class="prod-code">${c}</span>`).join('')}</div>`
@@ -109,32 +173,35 @@ function renderCards() {
     if (p.tem_voltagem) {
       const qty110 = newQtysVolt[p.id]?.v110 ?? p.quantidade_110v;
       const qty220 = newQtysVolt[p.id]?.v220 ?? p.quantidade_220v;
-      qtyBlockHTML = `
+      qtyBlockHTML = `<div class="qty-editor volt-editor">
         <div class="volt-section">
-          <div class="volt-label-row"><span class="volt-chip v110">110V</span><span class="qty-current">Atual: <strong>${p.quantidade_110v}</strong></span></div>
+          <div class="volt-label-row"><span class="volt-chip v110">110V</span></div>
           <div class="qty-row">
+            <div class="qty-current">Atual: <strong>${p.quantidade_110v}</strong></div>
             <div class="counter">
               <button class="counter-btn" onclick="adjVolt(${p.id}, 'v110', -1)">−</button>
               <input class="counter-input" type="number" min="0" id="qty-${p.id}-110" value="${qty110}" oninput="onQtyInputVolt(${p.id}, 'v110', this.value)">
               <button class="counter-btn" onclick="adjVolt(${p.id}, 'v110', 1)">+</button>
             </div>
-            <button class="btn-update" id="btn-${p.id}-110" onclick="saveQtyVolt(${p.id}, 'v110')" style="flex:1">Salvar 110V</button>
+            <button class="btn-update" id="btn-${p.id}-110" onclick="saveQtyVolt(${p.id}, 'v110')" ${qty110 === p.quantidade_110v ? 'disabled' : ''}>Salvar 110V</button>
           </div>
         </div>
         <div class="volt-section">
-          <div class="volt-label-row"><span class="volt-chip v220">220V</span><span class="qty-current">Atual: <strong>${p.quantidade_220v}</strong></span></div>
+          <div class="volt-label-row"><span class="volt-chip v220">220V</span></div>
           <div class="qty-row">
+            <div class="qty-current">Atual: <strong>${p.quantidade_220v}</strong></div>
             <div class="counter">
               <button class="counter-btn" onclick="adjVolt(${p.id}, 'v220', -1)">−</button>
               <input class="counter-input" type="number" min="0" id="qty-${p.id}-220" value="${qty220}" oninput="onQtyInputVolt(${p.id}, 'v220', this.value)">
               <button class="counter-btn" onclick="adjVolt(${p.id}, 'v220', 1)">+</button>
             </div>
-            <button class="btn-update" id="btn-${p.id}-220" onclick="saveQtyVolt(${p.id}, 'v220')" style="flex:1">Salvar 220V</button>
+            <button class="btn-update" id="btn-${p.id}-220" onclick="saveQtyVolt(${p.id}, 'v220')" ${qty220 === p.quantidade_220v ? 'disabled' : ''}>Salvar 220V</button>
           </div>
-        </div>`;
+        </div>
+      </div>`;
     } else {
       const qty = newQtys[p.id] ?? p.quantidade;
-      qtyBlockHTML = `
+      qtyBlockHTML = `<div class="qty-editor">
         <div class="qty-row">
           <div class="qty-current">Atual: <strong>${p.quantidade}</strong></div>
           <div class="counter">
@@ -142,8 +209,9 @@ function renderCards() {
             <input class="counter-input" type="number" min="0" id="qty-${p.id}" value="${qty}" oninput="onQtyInput(${p.id}, this.value)">
             <button class="counter-btn" onclick="adj(${p.id}, 1)">+</button>
           </div>
-          <button class="btn-update" id="btn-${p.id}" onclick="saveQty(${p.id})">Salvar</button>
-        </div>`;
+          <button class="btn-update" id="btn-${p.id}" onclick="saveQty(${p.id})" ${qty === p.quantidade ? 'disabled' : ''}>Salvar</button>
+        </div>
+      </div>`;
     }
 
     return `<div class="prod-card ${status.cls}" id="card-${p.id}">
@@ -153,7 +221,10 @@ function renderCards() {
           <div class="prod-name">${p.nome}</div>
           ${codesHTML}
         </div>
+      </div>
+      <div class="prod-status-cell">
         <span class="prod-badge ${status.cls}">${status.label}</span>
+        <div class="stock-total">Total atual: <strong>${totalQty(p)}</strong></div>
       </div>
       ${qtyBlockHTML}
     </div>`;
@@ -165,16 +236,28 @@ function adj(id, delta) {
   const input = document.getElementById(`qty-${id}`);
   const val = Math.max(0, (parseInt(input.value) || 0) + delta);
   input.value = val; newQtys[id] = val;
+  updateSaveButton(id);
 }
-function onQtyInput(id, val) { newQtys[id] = parseInt(val) || 0; }
+function onQtyInput(id, val) {
+  newQtys[id] = parseInt(val) || 0;
+  updateSaveButton(id);
+}
+
+function updateSaveButton(id) {
+  const prod = products.find(p => p.id === id);
+  const btn = document.getElementById(`btn-${id}`);
+  if (!prod || !btn) return;
+  btn.disabled = newQtys[id] === undefined || newQtys[id] === prod.quantidade;
+}
 
 async function saveQty(id) {
   const novaQty = newQtys[id];
   const prod = products.find(p => p.id === id);
-  if (novaQty === undefined || !prod) return;
+  if (novaQty === undefined || !prod || novaQty === prod.quantidade) return;
 
   const btn = document.getElementById(`btn-${id}`);
   btn.disabled = true;
+  btn.classList.add('saving');
   btn.textContent = '...';
 
   const { data, error } = await sb.rpc('registrar_contagem_estoque', {
@@ -184,8 +267,9 @@ async function saveQty(id) {
   });
 
   if (error) {
-    btn.disabled = false;
+    btn.classList.remove('saving');
     btn.textContent = 'Salvar';
+    updateSaveButton(id);
     showToast(error.message || 'Nao foi possivel salvar.');
     return;
   }
@@ -199,6 +283,7 @@ async function saveQty(id) {
     prod.quantidade = novaQty;
   }
 
+  btn.classList.remove('saving');
   btn.classList.add('saved');
   btn.textContent = 'Salvo';
   showToast(`${prod.nome} -> ${novaQty}`);
@@ -217,10 +302,22 @@ function adjVolt(id, volt, delta) {
   input.value = val;
   if (!newQtysVolt[id]) newQtysVolt[id] = {};
   newQtysVolt[id][volt] = val;
+  updateSaveButtonVolt(id, volt);
 }
 function onQtyInputVolt(id, volt, val) {
   if (!newQtysVolt[id]) newQtysVolt[id] = {};
   newQtysVolt[id][volt] = parseInt(val) || 0;
+  updateSaveButtonVolt(id, volt);
+}
+
+function updateSaveButtonVolt(id, volt) {
+  const prod = products.find(p => p.id === id);
+  const suffix = volt === 'v110' ? '110' : '220';
+  const currentQty = volt === 'v110' ? prod?.quantidade_110v : prod?.quantidade_220v;
+  const newQty = newQtysVolt[id]?.[volt];
+  const btn = document.getElementById(`btn-${id}-${suffix}`);
+  if (!prod || !btn) return;
+  btn.disabled = newQty === undefined || newQty === currentQty;
 }
 
 async function saveQtyVolt(id, volt) {
@@ -228,7 +325,8 @@ async function saveQtyVolt(id, volt) {
   if (!prod) return;
 
   const novaQty = newQtysVolt[id]?.[volt];
-  if (novaQty === undefined) return;
+  const currentQty = volt === 'v110' ? prod.quantidade_110v : prod.quantidade_220v;
+  if (novaQty === undefined || novaQty === currentQty) return;
 
   const suffix = volt === 'v110' ? '110' : '220';
   const voltLabel = volt === 'v110' ? '110V' : '220V';
@@ -236,6 +334,7 @@ async function saveQtyVolt(id, volt) {
 
   const btn = document.getElementById(`btn-${id}-${suffix}`);
   btn.disabled = true;
+  btn.classList.add('saving');
   btn.textContent = '...';
 
   const { data, error } = await sb.rpc('registrar_contagem_estoque', {
@@ -245,8 +344,9 @@ async function saveQtyVolt(id, volt) {
   });
 
   if (error) {
-    btn.disabled = false;
+    btn.classList.remove('saving');
     btn.textContent = `Salvar ${voltLabel}`;
+    updateSaveButtonVolt(id, volt);
     showToast(error.message || 'Nao foi possivel salvar.');
     return;
   }
@@ -262,6 +362,7 @@ async function saveQtyVolt(id, volt) {
     prod.quantidade_220v = novaQty;
   }
 
+  btn.classList.remove('saving');
   btn.classList.add('saved');
   btn.textContent = `${voltLabel} salvo`;
   showToast(`${prod.nome} (${voltLabel}) -> ${novaQty}`);
