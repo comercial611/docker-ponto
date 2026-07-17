@@ -19,6 +19,9 @@ let nuvemshopPreviewGenerated = false;
 let nuvemshopPreviewGeneratedAt = null;
 let nuvemshopServerSimulation = null;
 let nuvemshopPilotReadiness = null;
+let nuvemshopPilotSelectedItemId = null;
+let nuvemshopPilotApplying = false;
+let nuvemshopPilotApplicationLocked = false;
 let nuvemshopAuditRows = [];
 let nuvemshopAuditLoaded = false;
 let nuvemshopAuditUser = null;
@@ -729,6 +732,7 @@ async function loadNuvemshopCatalog(force = false) {
   pagination.style.display = 'none';
   nuvemshopServerSimulation = null;
   nuvemshopPilotReadiness = null;
+  nuvemshopPilotSelectedItemId = null;
 
   try {
     const { data, error } = await sb.functions.invoke('nuvemshop-catalogo', { method: 'GET' });
@@ -1056,21 +1060,123 @@ function openNuvemshopPilotModal() {
     return;
   }
 
+  nuvemshopPilotReadiness = null;
+  nuvemshopPilotSelectedItemId = null;
+  nuvemshopPilotApplying = false;
+  nuvemshopPilotApplicationLocked = false;
   document.getElementById('nuvemshop-pilot-summary').innerHTML =
     `A verificacao usara a auditoria <strong>${escapeHtml(nuvemshopServerSimulation.auditoria_id)}</strong> como referencia.<br>` +
-    'Nenhum estoque sera alterado nesta etapa.';
+    'A verificacao inicial nao altera estoques. A aplicacao so sera liberada depois de todas as protecoes.';
   const result = document.getElementById('nuvemshop-pilot-result');
   result.className = 'nuvemshop-pilot-result';
   result.innerHTML = '';
+  const application = document.getElementById('nuvemshop-pilot-application');
+  application.className = 'nuvemshop-pilot-application';
+  document.getElementById('nuvemshop-pilot-items').innerHTML = '';
+  document.getElementById('nuvemshop-pilot-confirmation').value = '';
+  document.getElementById('nuvemshop-pilot-application-note').textContent = '';
+  const applicationResult = document.getElementById('nuvemshop-pilot-application-result');
+  applicationResult.className = 'nuvemshop-pilot-application-result';
+  applicationResult.innerHTML = '';
   document.getElementById('nuvemshop-pilot-error').textContent = '';
   const button = document.getElementById('nuvemshop-pilot-run');
   button.disabled = false;
   button.textContent = 'Verificar protecoes';
+  const applyButton = document.getElementById('nuvemshop-pilot-apply');
+  applyButton.disabled = true;
+  applyButton.textContent = 'Aplicar 1 item';
   document.getElementById('nuvemshop-pilot-modal').classList.add('open');
 }
 
 function closeNuvemshopPilotModal() {
+  if (nuvemshopPilotApplying) return;
   document.getElementById('nuvemshop-pilot-modal').classList.remove('open');
+}
+
+function nuvemshopPilotCandidates() {
+  if (!Array.isArray(nuvemshopServerSimulation?.itens)) return [];
+  return nuvemshopServerSimulation.itens.filter(item =>
+    item?.status === 'alteraria' &&
+    Number.isSafeInteger(Number(item.auditoria_item_id)) &&
+    Number(item.auditoria_item_id) > 0
+  );
+}
+
+function renderNuvemshopPilotApplication() {
+  const section = document.getElementById('nuvemshop-pilot-application');
+  const itemsElement = document.getElementById('nuvemshop-pilot-items');
+  const input = document.getElementById('nuvemshop-pilot-confirmation');
+  const note = document.getElementById('nuvemshop-pilot-application-note');
+  const candidates = nuvemshopPilotCandidates();
+  const confirmation = nuvemshopPilotReadiness?.confirmacao_exigida || 'APLICAR 1 ITEM';
+
+  section.classList.add('visible');
+  input.placeholder = confirmation;
+  if (!candidates.length) {
+    itemsElement.innerHTML = '<div class="nuvemshop-audit-empty">Esta validacao nao possui item que alteraria o estoque.</div>';
+    note.textContent = 'Gere uma nova validacao depois de conferir os vinculos e estoques.';
+    updateNuvemshopPilotApplyButton();
+    return;
+  }
+
+  itemsElement.innerHTML = candidates.map(item => {
+    const itemId = Number(item.auditoria_item_id);
+    const voltage = item.voltagem || 'Unica';
+    const selected = itemId === nuvemshopPilotSelectedItemId;
+    return `<button type="button" class="nuvemshop-pilot-item${selected ? ' selected' : ''}" onclick="selectNuvemshopPilotItem(${itemId})">
+      <input type="radio" name="nuvemshop-pilot-item" tabindex="-1"${selected ? ' checked' : ''}>
+      <span>
+        <span class="nuvemshop-pilot-item-name">${escapeHtml(item.produto_nome)}</span>
+        <span class="nuvemshop-pilot-item-meta">${escapeHtml(voltage)} | Item auditado ${escapeHtml(itemId)}</span>
+      </span>
+      <span class="nuvemshop-pilot-item-stock">${escapeHtml(item.estoque_atual)} para <strong>${escapeHtml(item.estoque_destino)}</strong></span>
+    </button>`;
+  }).join('');
+
+  note.className = `nuvemshop-pilot-application-note${nuvemshopPilotReadiness?.pronto_para_aplicar ? ' ready' : ''}`;
+  note.textContent = nuvemshopPilotReadiness?.pronto_para_aplicar
+    ? `Escolha um item e digite exatamente "${confirmation}". O servidor ainda repetira todas as verificacoes antes da escrita.`
+    : 'A selecao pode ser conferida, mas a aplicacao permanece desativada enquanto houver protecoes bloqueadas.';
+  updateNuvemshopPilotApplyButton();
+}
+
+function selectNuvemshopPilotItem(itemId) {
+  const normalizedItemId = Number(itemId);
+  if (nuvemshopPilotApplicationLocked || nuvemshopPilotApplying) return;
+  if (!nuvemshopPilotCandidates().some(item => Number(item.auditoria_item_id) === normalizedItemId)) return;
+  nuvemshopPilotSelectedItemId = normalizedItemId;
+  renderNuvemshopPilotApplication();
+  document.getElementById('nuvemshop-pilot-application-result').className = 'nuvemshop-pilot-application-result';
+}
+
+function updateNuvemshopPilotApplyButton() {
+  const button = document.getElementById('nuvemshop-pilot-apply');
+  if (!button) return;
+  const input = document.getElementById('nuvemshop-pilot-confirmation');
+  const confirmation = nuvemshopPilotReadiness?.confirmacao_exigida || 'APLICAR 1 ITEM';
+  const selectedItemExists = nuvemshopPilotCandidates()
+    .some(item => Number(item.auditoria_item_id) === nuvemshopPilotSelectedItemId);
+  button.disabled = !nuvemshopPilotReadiness?.pronto_para_aplicar ||
+    !selectedItemExists ||
+    input?.value !== confirmation ||
+    nuvemshopPilotApplying ||
+    nuvemshopPilotApplicationLocked;
+}
+
+async function readNuvemshopFunctionFailure(error, fallbackMessage) {
+  let payload = null;
+  const response = error?.context;
+  if (response && typeof response.json === 'function') {
+    try {
+      payload = await (typeof response.clone === 'function' ? response.clone() : response).json();
+    } catch {
+      payload = null;
+    }
+  }
+  return {
+    message: payload?.error || error?.message || fallbackMessage,
+    payload
+  };
 }
 
 function renderNuvemshopPilotReadiness(data) {
@@ -1092,7 +1198,7 @@ function renderNuvemshopPilotReadiness(data) {
   </div>
   <div class="nuvemshop-pilot-status ${data.pronto_para_aplicar ? 'ready' : 'blocked'}">
     ${data.pronto_para_aplicar
-      ? 'Protecoes atendidas. A escrita continua indisponivel nesta versao do sistema.'
+      ? 'Protecoes atendidas. Selecione somente um item para o piloto.'
       : 'Piloto bloqueado com seguranca. Nenhuma escrita foi executada.'}
   </div>
   ${blockers.length ? `<div class="nuvemshop-pilot-blockers">${blockers.map(blocker => `<div>${escapeHtml(blocker)}</div>`).join('')}</div>` : ''}`;
@@ -1121,13 +1227,100 @@ async function runNuvemshopPilotReadiness() {
 
     nuvemshopPilotReadiness = data;
     renderNuvemshopPilotReadiness(data);
-    showToast('Protecoes do piloto verificadas sem alterar estoques.');
+    renderNuvemshopPilotApplication();
+    showToast('green', 'Protecoes do piloto verificadas sem alterar estoques.');
   } catch (error) {
     console.error('Falha na verificacao do piloto Nuvemshop', error);
     errorElement.textContent = error?.message || 'Nao foi possivel verificar as protecoes do piloto.';
   } finally {
     button.disabled = false;
     button.textContent = 'Executar novamente';
+  }
+}
+
+async function runNuvemshopPilotApplication() {
+  const button = document.getElementById('nuvemshop-pilot-apply');
+  const errorElement = document.getElementById('nuvemshop-pilot-error');
+  const resultElement = document.getElementById('nuvemshop-pilot-application-result');
+  const confirmation = nuvemshopPilotReadiness?.confirmacao_exigida || 'APLICAR 1 ITEM';
+  const selectedItem = nuvemshopPilotCandidates()
+    .find(item => Number(item.auditoria_item_id) === nuvemshopPilotSelectedItemId);
+
+  if (!nuvemshopPilotReadiness?.pronto_para_aplicar) {
+    errorElement.textContent = 'Verifique novamente as protecoes antes de qualquer aplicacao.';
+    return;
+  }
+  if (!selectedItem) {
+    errorElement.textContent = 'Selecione exatamente um item auditado.';
+    return;
+  }
+  if (document.getElementById('nuvemshop-pilot-confirmation').value !== confirmation) {
+    errorElement.textContent = `Digite exatamente "${confirmation}".`;
+    return;
+  }
+
+  nuvemshopPilotApplying = true;
+  errorElement.textContent = '';
+  resultElement.className = 'nuvemshop-pilot-application-result';
+  resultElement.innerHTML = '';
+  button.textContent = 'Aplicando...';
+  updateNuvemshopPilotApplyButton();
+
+  try {
+    const { data, error } = await sb.functions.invoke('nuvemshop-sincronizacao', {
+      body: {
+        modo: 'aplicar_piloto',
+        store_id: nuvemshopStoreId,
+        auditoria_id: nuvemshopServerSimulation.auditoria_id,
+        item_auditoria_id: Number(selectedItem.auditoria_item_id),
+        confirmacao: confirmation
+      }
+    });
+    if (error) {
+      const failure = await readNuvemshopFunctionFailure(error, 'Nao foi possivel concluir a aplicacao piloto.');
+      const terminalAttempt = Boolean(failure.payload?.aplicacao_id);
+      if (terminalAttempt) nuvemshopPilotApplicationLocked = true;
+      const blockers = Array.isArray(failure.payload?.bloqueios) ? failure.payload.bloqueios : [];
+      resultElement.className = `nuvemshop-pilot-application-result visible ${terminalAttempt ? 'warning' : 'error'}`;
+      resultElement.innerHTML = `${escapeHtml(failure.message)}` +
+        `${blockers.length ? `<br>${blockers.map(item => escapeHtml(item)).join('<br>')}` : ''}` +
+        `${terminalAttempt ? '<br>Nao repita esta tentativa. Confira a auditoria e gere uma nova validacao.' : ''}`;
+      if (terminalAttempt) {
+        nuvemshopServerSimulation = null;
+        nuvemshopPilotReadiness = null;
+        renderNuvemshopSyncPreview();
+      } else {
+        nuvemshopPilotReadiness = null;
+        renderNuvemshopPilotApplication();
+      }
+      return;
+    }
+    if (data?.modo !== 'aplicacao_piloto' || data?.resultado !== 'concluida' || data?.escrita_executada !== true) {
+      throw new Error('O servidor retornou um resultado inesperado. Nao tente novamente antes de conferir a auditoria.');
+    }
+
+    nuvemshopPilotApplicationLocked = true;
+    resultElement.className = 'nuvemshop-pilot-application-result visible success';
+    resultElement.innerHTML =
+      `<strong>Aplicacao confirmada.</strong><br>` +
+      `Estoque Nuvemshop: ${escapeHtml(data.estoque_anterior)} para ${escapeHtml(data.estoque_confirmado)}.<br>` +
+      `Auditoria: ${escapeHtml(data.aplicacao_id)}`;
+    showToast('green', 'Um item foi aplicado e confirmado na Nuvemshop.');
+    nuvemshopAuditPage = 1;
+    loadNuvemshopAuditHistory(true);
+    await loadNuvemshopCatalog(true);
+  } catch (error) {
+    console.error('Falha inesperada na aplicacao piloto Nuvemshop', error);
+    nuvemshopPilotApplicationLocked = true;
+    nuvemshopServerSimulation = null;
+    nuvemshopPilotReadiness = null;
+    renderNuvemshopSyncPreview();
+    resultElement.className = 'nuvemshop-pilot-application-result visible warning';
+    resultElement.textContent = error?.message || 'Resultado inesperado. Confira a auditoria antes de qualquer nova acao.';
+  } finally {
+    nuvemshopPilotApplying = false;
+    button.textContent = nuvemshopPilotApplicationLocked ? 'Nova validacao necessaria' : 'Aplicar 1 item';
+    updateNuvemshopPilotApplyButton();
   }
 }
 
@@ -1158,17 +1351,26 @@ async function runNuvemshopSimulation() {
       body: { modo: 'simular', store_id: nuvemshopStoreId }
     });
     if (error) throw error;
-    if (data?.modo !== 'simulacao' || data?.escrita_habilitada !== false || !data?.resumo || !data?.auditoria_id) {
+    if (
+      data?.modo !== 'simulacao' ||
+      data?.escrita_habilitada !== false ||
+      !data?.resumo ||
+      !data?.auditoria_id ||
+      !Array.isArray(data?.itens) ||
+      data.itens.some(item => !Number.isSafeInteger(Number(item?.auditoria_item_id)))
+    ) {
       throw new Error('O servidor retornou uma validacao inesperada.');
     }
 
     nuvemshopServerSimulation = data;
     nuvemshopPilotReadiness = null;
+    nuvemshopPilotSelectedItemId = null;
+    nuvemshopPilotApplicationLocked = false;
     renderNuvemshopSimulationResult(data);
     renderNuvemshopSyncPreview();
     nuvemshopAuditPage = 1;
     loadNuvemshopAuditHistory(true);
-    showToast('Previa validada no servidor sem alterar estoques.');
+    showToast('green', 'Previa validada no servidor sem alterar estoques.');
   } catch (error) {
     console.error('Falha na validacao segura da Nuvemshop', error);
     errorElement.textContent = error?.message || 'Nao foi possivel validar a previa no servidor.';

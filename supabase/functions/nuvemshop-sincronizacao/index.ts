@@ -3,6 +3,8 @@ import { corsHeaders, jsonResponse } from "../_shared/http.ts";
 import { decryptToken, requiredEnv } from "../_shared/nuvemshop.ts";
 
 const USER_AGENT = "Conferencia de Estoque PDS (comercial@comercial.pontodasublimacao.com.br)";
+const PILOT_CONFIRMATION = "APLICAR 1 ITEM";
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const wait = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -39,6 +41,102 @@ function variantStock(variant: Record<string, unknown>, locationId: string): num
     if (level) return integerOrNull(level.stock);
   }
   return integerOrNull(variant.stock);
+}
+
+function strictVariantStock(variant: Record<string, unknown>, locationId: string): number | null {
+  if (!Array.isArray(variant.inventory_levels)) return null;
+  const level = variant.inventory_levels
+    .map(asRecord)
+    .find((item) => item && String(item.location_id || "") === locationId);
+  return level ? integerOrNull(level.stock) : null;
+}
+
+function findRemoteVariant(
+  product: Record<string, unknown>,
+  variantId: number,
+): Record<string, unknown> | null {
+  if (!Array.isArray(product.variants)) return null;
+  return product.variants
+    .map(asRecord)
+    .find((variant) => variant && integerOrNull(variant.id) === variantId) || null;
+}
+
+function nuvemshopHeaders(accessToken: string): Record<string, string> {
+  return {
+    Authorization: `Bearer ${accessToken}`,
+    "User-Agent": USER_AGENT,
+    "Content-Type": "application/json",
+  };
+}
+
+async function loadRemoteProduct(
+  storeId: number,
+  productId: number,
+  accessToken: string,
+): Promise<Record<string, unknown>> {
+  const response = await fetch(
+    `https://api.nuvemshop.com.br/v1/${storeId}/products/${productId}`,
+    {
+      headers: nuvemshopHeaders(accessToken),
+      signal: AbortSignal.timeout(15000),
+    },
+  );
+  if (!response.ok) {
+    console.error("Falha ao consultar produto do piloto", response.status);
+    throw new Error(`Consulta externa recusada (HTTP ${response.status}).`);
+  }
+
+  const product = asRecord(await response.json());
+  if (!product || integerOrNull(product.id) !== productId) {
+    throw new Error("Produto externo retornado em formato inesperado.");
+  }
+  return product;
+}
+
+async function replaceRemoteVariantStock(
+  storeId: number,
+  productId: number,
+  variantId: number,
+  locationId: string,
+  destinationStock: number,
+  accessToken: string,
+): Promise<Response> {
+  return fetch(
+    `https://api.nuvemshop.com.br/v1/${storeId}/products/${productId}/variants/stock`,
+    {
+      method: "POST",
+      headers: nuvemshopHeaders(accessToken),
+      signal: AbortSignal.timeout(15000),
+      body: JSON.stringify({
+        action: "replace",
+        value: destinationStock,
+        location_id: locationId,
+        id: variantId,
+      }),
+    },
+  );
+}
+
+async function finalizePilot(
+  supabaseAdmin: ReturnType<typeof createClient>,
+  applicationId: string,
+  result: "concluida" | "parcial" | "falhou",
+  confirmedStock: number | null,
+  errorMessage: string | null,
+): Promise<void> {
+  const { error } = await supabaseAdmin.rpc(
+    "finalizar_aplicacao_piloto_nuvemshop",
+    {
+      p_aplicacao_id: applicationId,
+      p_resultado: result,
+      p_estoque_confirmado: confirmedStock,
+      p_erro: errorMessage,
+    },
+  );
+  if (error) {
+    console.error("Falha ao finalizar auditoria do piloto", error.message);
+    throw new Error("A tentativa terminou, mas a auditoria nao foi finalizada.");
+  }
 }
 
 async function loadRemoteProducts(storeId: number, accessToken: string): Promise<unknown[]> {
@@ -93,7 +191,9 @@ Deno.serve(async (request) => {
     const storeId = Number(payload?.store_id);
     const operationMode = String(payload?.modo || "");
     const requestedAuditId = String(payload?.auditoria_id || "");
-    if (!["simular", "verificar_piloto"].includes(operationMode)) {
+    const requestedAuditItemId = integerOrNull(payload?.item_auditoria_id);
+    const requestedConfirmation = String(payload?.confirmacao || "");
+    if (!["simular", "verificar_piloto", "aplicar_piloto"].includes(operationMode)) {
       return jsonResponse({ error: "Modo de operacao nao permitido." }, 400, headers);
     }
     if (!Number.isSafeInteger(storeId) || storeId <= 0) {
@@ -138,6 +238,248 @@ Deno.serve(async (request) => {
       .limit(501);
     if (linksError) throw linksError;
 
+    if (operationMode === "aplicar_piloto") {
+      if (!UUID_PATTERN.test(requestedAuditId) || !requestedAuditItemId || requestedAuditItemId <= 0) {
+        return jsonResponse({
+          error: "Informe a simulacao e o item auditado que sera aplicado.",
+          escrita_executada: false,
+        }, 400, headers);
+      }
+      if (requestedConfirmation !== PILOT_CONFIRMATION) {
+        return jsonResponse({
+          error: `Digite exatamente "${PILOT_CONFIRMATION}" para confirmar.`,
+          escrita_executada: false,
+        }, 400, headers);
+      }
+
+      const blockers: string[] = [];
+      if (!hasScope(connection.escopos, "write_products")) {
+        blockers.push("O aplicativo nao possui o escopo write_products.");
+      }
+      if (!connection.local_estoque_id) {
+        blockers.push("O local de estoque nao esta confirmado.");
+      }
+      if (connection.escrita_habilitada !== true) {
+        blockers.push("O interruptor de escrita da loja esta desligado.");
+      }
+      if (integerOrNull(connection.limite_aplicacao) !== 1) {
+        blockers.push("O limite do piloto precisa ser exatamente um item.");
+      }
+      if (!links?.length || links.length > 500) {
+        blockers.push("Os vinculos ativos nao atendem ao limite de seguranca.");
+      }
+      if (blockers.length) {
+        return jsonResponse({
+          error: "Aplicacao piloto bloqueada pelas protecoes.",
+          bloqueios: blockers,
+          escrita_executada: false,
+        }, 409, { ...headers, "Cache-Control": "no-store" });
+      }
+
+      const operationId = crypto.randomUUID();
+      const { data: applicationId, error: reservationError } = await supabaseAdmin.rpc(
+        "iniciar_aplicacao_piloto_nuvemshop",
+        {
+          p_chave_operacao: operationId,
+          p_simulacao_id: requestedAuditId,
+          p_item_simulacao_id: requestedAuditItemId,
+          p_store_id: storeId,
+          p_solicitado_por: userResult.data.user.id,
+        },
+      );
+      if (reservationError || typeof applicationId !== "string" || !UUID_PATTERN.test(applicationId)) {
+        console.error("Reserva do piloto recusada", reservationError?.message || "ID ausente");
+        return jsonResponse({
+          error: "A reserva foi recusada. Gere uma nova simulacao e confira as protecoes.",
+          escrita_executada: false,
+        }, 409, { ...headers, "Cache-Control": "no-store" });
+      }
+
+      let writeAttempted = false;
+      let confirmedStock: number | null = null;
+      try {
+        const { data: reservedItem, error: reservedItemError } = await supabaseAdmin
+          .from("nuvemshop_sincronizacao_itens")
+          .select("id, produto_id, voltagem, nuvemshop_produto_id, nuvemshop_variante_id, estoque_anterior, estoque_destino")
+          .eq("sincronizacao_id", applicationId)
+          .single();
+        if (reservedItemError || !reservedItem) {
+          throw new Error("Item reservado nao foi encontrado.");
+        }
+
+        const productId = integerOrNull(reservedItem.nuvemshop_produto_id);
+        const variantId = integerOrNull(reservedItem.nuvemshop_variante_id);
+        const previousStock = integerOrNull(reservedItem.estoque_anterior);
+        const destinationStock = integerOrNull(reservedItem.estoque_destino);
+        if (!productId || !variantId || previousStock === null || destinationStock === null) {
+          throw new Error("O item reservado nao possui uma variante externa explicita.");
+        }
+
+        const { data: latestConnection, error: latestConnectionError } = await supabaseAdmin
+          .from("nuvemshop_conexoes")
+          .select("token_cifrado, token_iv, escopos, local_estoque_id, escrita_habilitada, limite_aplicacao")
+          .eq("store_id", storeId)
+          .single();
+        if (latestConnectionError || !latestConnection) {
+          throw new Error("A conexao nao pode ser revalidada.");
+        }
+        if (
+          latestConnection.escrita_habilitada !== true
+          || integerOrNull(latestConnection.limite_aplicacao) !== 1
+          || !hasScope(latestConnection.escopos, "write_products")
+          || String(latestConnection.local_estoque_id || "") !== String(connection.local_estoque_id)
+        ) {
+          throw new Error("As protecoes da loja mudaram depois da reserva.");
+        }
+
+        const { data: localProduct, error: localProductError } = await supabaseAdmin
+          .from("produtos")
+          .select("id, tem_voltagem, quantidade, quantidade_110v, quantidade_220v")
+          .eq("id", reservedItem.produto_id)
+          .single();
+        if (localProductError || !localProduct) {
+          throw new Error("Produto local reservado nao foi encontrado.");
+        }
+        const currentLocalStock = localDestination(
+          localProduct as Record<string, unknown>,
+          reservedItem.voltagem,
+        );
+        if (currentLocalStock !== destinationStock) {
+          throw new Error("O estoque local mudou depois da reserva. Gere uma nova simulacao.");
+        }
+
+        const accessToken = await decryptToken(
+          latestConnection.token_cifrado,
+          latestConnection.token_iv,
+          encryptionKey,
+        );
+        const remoteBefore = await loadRemoteProduct(storeId, productId, accessToken);
+        const variantBefore = findRemoteVariant(remoteBefore, variantId);
+        const locationId = String(latestConnection.local_estoque_id);
+        const stockBefore = variantBefore ? strictVariantStock(variantBefore, locationId) : null;
+        if (!variantBefore || stockBefore === null) {
+          throw new Error("A variante nao possui estoque no local confirmado.");
+        }
+        if (stockBefore !== previousStock) {
+          throw new Error("O estoque externo mudou desde a simulacao. Gere uma nova previa.");
+        }
+
+        writeAttempted = true;
+        let writeResponse: Response | null = null;
+        let writeFailure: string | null = null;
+        try {
+          writeResponse = await replaceRemoteVariantStock(
+            storeId,
+            productId,
+            variantId,
+            locationId,
+            destinationStock,
+            accessToken,
+          );
+          if (!writeResponse.ok) {
+            writeFailure = `A Nuvemshop recusou a alteracao (HTTP ${writeResponse.status}).`;
+            console.error("Alteracao piloto recusada", writeResponse.status);
+          }
+          await writeResponse.arrayBuffer().catch(() => null);
+        } catch (error) {
+          writeFailure = "A resposta da alteracao nao foi confirmada.";
+          console.error(
+            "Resposta ambigua na alteracao piloto",
+            error instanceof Error ? error.message : error,
+          );
+        }
+
+        let confirmationFailure: string | null = null;
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+          await wait(attempt === 0 ? 700 : 1300);
+          try {
+            const remoteAfter = await loadRemoteProduct(storeId, productId, accessToken);
+            const variantAfter = findRemoteVariant(remoteAfter, variantId);
+            confirmedStock = variantAfter ? strictVariantStock(variantAfter, locationId) : null;
+            if (confirmedStock === destinationStock) break;
+          } catch (error) {
+            confirmationFailure = error instanceof Error
+              ? error.message
+              : "Falha ao reler o estoque externo.";
+          }
+        }
+
+        if (confirmedStock === destinationStock) {
+          await finalizePilot(supabaseAdmin, applicationId, "concluida", confirmedStock, null);
+          return jsonResponse({
+            modo: "aplicacao_piloto",
+            operacao_id: operationId,
+            aplicacao_id: applicationId,
+            store_id: storeId,
+            item_auditoria_id: requestedAuditItemId,
+            estoque_anterior: previousStock,
+            estoque_destino: destinationStock,
+            estoque_confirmado: confirmedStock,
+            escrita_executada: true,
+            resultado: "concluida",
+          }, 200, { ...headers, "Cache-Control": "no-store" });
+        }
+
+        const definitelyRejected = Boolean(
+          writeResponse
+          && writeResponse.status >= 400
+          && writeResponse.status < 500
+          && confirmedStock === previousStock,
+        );
+        const finalResult = definitelyRejected ? "falhou" : "parcial";
+        const finalError = [
+          writeFailure,
+          confirmationFailure,
+          confirmedStock === null
+            ? "Nao foi possivel confirmar o estoque final."
+            : `Estoque confirmado em ${confirmedStock}, diferente do destino ${destinationStock}.`,
+        ].filter(Boolean).join(" ");
+
+        await finalizePilot(
+          supabaseAdmin,
+          applicationId,
+          finalResult,
+          confirmedStock,
+          finalError,
+        );
+        return jsonResponse({
+          error: finalResult === "falhou"
+            ? "A Nuvemshop recusou a aplicacao. O estoque permaneceu inalterado."
+            : "O resultado externo ficou incerto. Nao tente novamente antes de conferir a auditoria.",
+          aplicacao_id: applicationId,
+          resultado: finalResult,
+          estoque_confirmado: confirmedStock,
+          tentativa_externa: true,
+          escrita_executada: finalResult === "falhou" ? false : null,
+        }, finalResult === "falhou" ? 409 : 502, {
+          ...headers,
+          "Cache-Control": "no-store",
+        });
+      } catch (error) {
+        const errorMessage = error instanceof Error
+          ? error.message
+          : "Falha inesperada na aplicacao piloto.";
+        const finalResult = writeAttempted ? "parcial" : "falhou";
+        await finalizePilot(
+          supabaseAdmin,
+          applicationId,
+          finalResult,
+          confirmedStock,
+          errorMessage,
+        );
+        return jsonResponse({
+          error: writeAttempted
+            ? "A tentativa externa ficou incerta. Confira a auditoria antes de qualquer nova acao."
+            : errorMessage,
+          aplicacao_id: applicationId,
+          resultado: finalResult,
+          estoque_confirmado: confirmedStock,
+          tentativa_externa: writeAttempted,
+          escrita_executada: writeAttempted ? null : false,
+        }, writeAttempted ? 502 : 409, { ...headers, "Cache-Control": "no-store" });
+      }
+    }
+
     if (operationMode === "verificar_piloto") {
       const writeScopeGranted = hasScope(connection.escopos, "write_products");
       const locationConfirmed = Boolean(connection.local_estoque_id);
@@ -149,7 +491,7 @@ Deno.serve(async (request) => {
       let simulationValid = false;
       let simulationExpiresAt: string | null = null;
 
-      if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestedAuditId)) {
+      if (UUID_PATTERN.test(requestedAuditId)) {
         const { data: audit, error: auditError } = await supabaseAdmin
           .from("nuvemshop_sincronizacoes")
           .select("id, store_id, modo, status, solicitado_por, itens_falha, created_at")
@@ -197,6 +539,7 @@ Deno.serve(async (request) => {
         simulacao_valida: simulationValid,
         simulacao_expira_em: simulationExpiresAt,
         escrita_habilitada: writeEnabled,
+        confirmacao_exigida: PILOT_CONFIRMATION,
         requisitos_atendidos: writeScopeGranted
           && locationConfirmed
           && linksWithinLimit
@@ -318,6 +661,25 @@ Deno.serve(async (request) => {
       throw new Error("A simulacao foi calculada, mas a auditoria nao foi registrada.");
     }
 
+    const { data: auditItems, error: auditItemsError } = await supabaseAdmin
+      .from("nuvemshop_sincronizacao_itens")
+      .select("id, vinculo_id")
+      .eq("sincronizacao_id", auditId);
+    if (auditItemsError || auditItems?.length !== items.length) {
+      console.error("Falha ao recuperar itens da auditoria", auditItemsError?.message || "Total divergente");
+      throw new Error("A auditoria foi registrada, mas seus itens nao foram confirmados.");
+    }
+    const auditItemByLink = new Map(
+      auditItems.map((item) => [Number(item.vinculo_id), Number(item.id)]),
+    );
+    const auditedItems = items.map((item) => ({
+      ...item,
+      auditoria_item_id: auditItemByLink.get(Number(item.vinculo_id)) || null,
+    }));
+    if (auditedItems.some((item) => !item.auditoria_item_id)) {
+      throw new Error("A auditoria registrada possui item sem identificador.");
+    }
+
     return jsonResponse({
       modo: "simulacao",
       operacao_id: operationId,
@@ -330,11 +692,11 @@ Deno.serve(async (request) => {
       solicitado_por: userResult.data.user.id,
       gerado_em: generatedAt,
       resumo: summary,
-      itens: items,
+      itens: auditedItems,
       escrita_habilitada: false,
     }, 200, { ...headers, "Cache-Control": "no-store" });
   } catch (error) {
-    console.error("Erro na simulacao Nuvemshop", error instanceof Error ? error.message : error);
-    return jsonResponse({ error: "Nao foi possivel gerar a simulacao segura." }, 500, headers);
+    console.error("Erro na sincronizacao Nuvemshop", error instanceof Error ? error.message : error);
+    return jsonResponse({ error: "Nao foi possivel concluir a operacao segura." }, 500, headers);
   }
 });
