@@ -2,6 +2,9 @@ let products = [];
 let historyRows = [];
 let csvLots = [];
 let attentionLists = {};
+let activePriority = 'urgent';
+let selectedPurchaseIds = new Set();
+let visiblePurchaseIds = [];
 
 async function checkSession() {
   const { data: { session } } = await sb.auth.getSession();
@@ -69,18 +72,19 @@ async function loadData() {
   if (csvRes.error) csvLots = [];
 
   renderAll();
+  updateTimestamp();
 }
 
 function setLoadingState() {
-  ['stat-produtos', 'stat-maquinas', 'stat-baixo', 'stat-zerado', 'stat-csv'].forEach(id => {
-    document.getElementById(id).textContent = '-';
+  ['stat-baixo', 'stat-zerado', 'stat-sugerido', 'stat-saude'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = '-';
   });
   ['machine-stat-total', 'machine-stat-units', 'machine-stat-low', 'machine-stat-out', 'machine-stat-sales'].forEach(id => {
     document.getElementById(id).textContent = '-';
   });
-  document.getElementById('purchase-tbody').innerHTML = '<tr><td colspan="6" class="empty-state">Carregando relatorio...</td></tr>';
+  document.getElementById('purchase-tbody').innerHTML = '<tr><td colspan="8" class="empty-state">Carregando relatório...</td></tr>';
   document.getElementById('top-products-list').innerHTML = '<div class="empty-state">Carregando...</div>';
-  document.getElementById('csv-lots-list').innerHTML = '<div class="empty-state">Carregando...</div>';
   document.getElementById('attention-grid').innerHTML = '';
   document.getElementById('machine-purchase-tbody').innerHTML = '<tr><td colspan="8" class="empty-state">Carregando relatorio...</td></tr>';
   document.getElementById('top-machines-list').innerHTML = '<div class="empty-state">Carregando...</div>';
@@ -89,23 +93,129 @@ function setLoadingState() {
 }
 
 function showLoadError(message) {
-  document.getElementById('purchase-tbody').innerHTML = `<tr><td colspan="6" class="empty-state">${escapeHtml(message)}</td></tr>`;
+  document.getElementById('purchase-tbody').innerHTML = `<tr><td colspan="8" class="empty-state">${escapeHtml(message)}</td></tr>`;
 }
 
 function renderAll() {
+  populateCategoryFilter();
   renderStats();
   renderPurchaseSuggestions();
   renderTopProducts();
-  renderCsvLots();
   renderAttention();
   renderMachineReport();
 }
 
-function switchReportTab(tab) {
+function switchReportTab(tab, navKey = tab === 'maquinas' ? 'machines' : 'products') {
   ['produtos', 'maquinas'].forEach(name => {
-    document.getElementById(`report-tab-${name}`).classList.toggle('active', name === tab);
-    document.getElementById(`report-panel-${name}`).classList.toggle('active', name === tab);
+    const active = name === tab;
+    const tabButton = document.getElementById(`report-tab-${name}`);
+    tabButton.classList.toggle('active', active);
+    tabButton.setAttribute('aria-selected', String(active));
+    document.getElementById(`report-panel-${name}`).classList.toggle('active', active);
   });
+  setActiveSideNav(navKey);
+}
+
+function setActiveSideNav(navKey) {
+  document.querySelectorAll('[data-report-nav]').forEach(item => {
+    const active = item.dataset.reportNav === navKey;
+    item.classList.toggle('active', active);
+    if (active) item.setAttribute('aria-current', 'page'); else item.removeAttribute('aria-current');
+  });
+}
+
+function scrollToReportTarget(id) {
+  const target = document.getElementById(id);
+  if (!target) return;
+  requestAnimationFrame(() => {
+    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    target.focus({ preventScroll: true });
+  });
+}
+
+function navigateReport(destination) {
+  if (destination === 'machines') {
+    switchReportTab('maquinas', 'machines');
+    scrollToReportTarget('report-panel-maquinas');
+  } else if (destination === 'imports') {
+    switchReportTab('produtos', 'imports');
+    scrollToReportTarget('csv-imports-section');
+  } else if (destination === 'products') {
+    switchReportTab('produtos', 'products');
+    scrollToReportTarget('purchase-section');
+  } else {
+    switchReportTab('produtos', 'overview');
+    scrollToReportTarget('reports-top');
+  }
+  toggleSidebar(false);
+}
+
+function populateCategoryFilter() {
+  const select = document.getElementById('filter-category');
+  if (!select) return;
+  const current = select.value;
+  const categories = [...new Set(products.filter(p => productCategory(p) === 'produto').map(p => String(p.categoria_nome || p.subcategoria || p.categoria || '').trim()).filter(Boolean))].sort();
+  select.innerHTML = '<option value="all">Todas</option>' + categories.map(category => `<option value="${escapeHtml(category)}">${escapeHtml(category)}</option>`).join('');
+  if ([...select.options].some(option => option.value === current)) select.value = current;
+}
+
+function getFilterState() {
+  return {
+    search: normalizeText(document.getElementById('filter-search')?.value),
+    status: document.getElementById('filter-status')?.value || 'all',
+    category: document.getElementById('filter-category')?.value || 'all',
+    period: document.getElementById('filter-period')?.value || '30'
+  };
+}
+
+function filteredProductItems() {
+  const filters = getFilterState();
+  return products.filter(product => {
+    if (productCategory(product) !== 'produto') return false;
+    const status = getStatus(product).cls;
+    const searchable = normalizeText([product.nome, product.codigo_interno, product.codigo_referencia, product.sku].filter(Boolean).join(' '));
+    const category = String(product.categoria_nome || product.subcategoria || product.categoria || '').trim();
+    return (!filters.search || searchable.includes(filters.search))
+      && (filters.status === 'all' || status === filters.status)
+      && (filters.category === 'all' || category === filters.category);
+  });
+}
+
+function applyFilters() {
+  updateSalesPeriodLabel();
+  renderPurchaseSuggestions();
+  renderTopProducts();
+}
+
+function updateSalesPeriodLabel() {
+  const period = document.getElementById('filter-period')?.value || '30';
+  const label = document.getElementById('sales-period-label');
+  if (label) label.textContent = period === 'all' ? 'Saída total' : `Saída ${period} dias`;
+}
+
+function clearFilters() {
+  document.getElementById('filter-search').value = '';
+  document.getElementById('filter-status').value = 'all';
+  document.getElementById('filter-category').value = 'all';
+  document.getElementById('filter-period').value = '30';
+  applyFilters();
+}
+
+function setStatusFilter(status) {
+  document.getElementById('filter-status').value = status;
+  applyFilters();
+  document.querySelector('.filter-panel')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function setPriorityFilter(priority) {
+  activePriority = priority;
+  document.querySelectorAll('.priority-tab').forEach(button => button.classList.toggle('active', button.dataset.priority === priority));
+  renderPurchaseSuggestions();
+}
+
+function focusPurchaseList() {
+  setPriorityFilter('urgent');
+  document.getElementById('purchase-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function productCategory(product) {
@@ -137,67 +247,121 @@ function getStatus(product) {
 
 function renderStats() {
   const productItems = products.filter(p => productCategory(p) === 'produto');
-  const machineItems = products.filter(p => productCategory(p) !== 'produto');
   const lowItems = productItems.filter(p => getStatus(p).cls === 'low');
   const outItems = productItems.filter(p => getStatus(p).cls === 'out');
-  const csvTotal = csvLots.reduce((sum, lot) => sum + (Number(lot.total_aplicado) || 0), 0);
-
-  document.getElementById('stat-produtos').textContent = productItems.length;
-  document.getElementById('stat-maquinas').textContent = machineItems.length;
+  const suggested = [...lowItems, ...outItems].reduce((sum, product) => sum + Math.max((Number(product.minimo) || 0) - totalQty(product), 0), 0);
+  const configured = productItems.filter(p => (Number(p.minimo) || 0) > 0);
+  const healthy = configured.filter(p => getStatus(p).cls === 'ok').length;
+  const health = configured.length ? Math.round((healthy / configured.length) * 100) : 100;
   document.getElementById('stat-baixo').textContent = lowItems.length;
   document.getElementById('stat-zerado').textContent = outItems.length;
-  document.getElementById('stat-csv').textContent = formatNumber(csvTotal);
+  document.getElementById('stat-sugerido').textContent = formatNumber(suggested);
+  document.getElementById('stat-saude').textContent = `${health}%`;
+  document.getElementById('stat-saude-label').textContent = health >= 75 ? 'adequado' : health >= 50 ? 'atenção' : 'crítico';
 }
 
 function renderPurchaseSuggestions() {
-  const rows = products
-    .filter(p => productCategory(p) === 'produto')
+  const candidateRows = filteredProductItems()
     .map(p => {
       const qty = totalQty(p);
       const minimo = Number(p.minimo) || 0;
-      return { product: p, qty, minimo, suggested: Math.max(minimo - qty, 0), status: getStatus(p) };
+      const sales = getProductSales(p.id, p.nome);
+      return { product: p, qty, minimo, sales, suggested: Math.max(minimo - qty, sales > 0 ? Math.ceil(sales * .25) : 0), status: getStatus(p) };
     })
-    .filter(item => item.status.cls !== 'ok')
     .sort((a, b) => {
       if (a.status.cls !== b.status.cls) return a.status.cls === 'out' ? -1 : 1;
       return b.suggested - a.suggested;
     });
 
-  document.getElementById('purchase-count').textContent = `${rows.length} ${rows.length === 1 ? 'item' : 'itens'}`;
+  const urgent = candidateRows.filter(item => item.status.cls === 'out');
+  const soon = candidateRows.filter(item => item.status.cls === 'low');
+  const monitor = candidateRows.filter(item => item.status.cls === 'ok');
+  document.getElementById('urgent-count').textContent = urgent.length;
+  document.getElementById('soon-count').textContent = soon.length;
+  document.getElementById('monitor-count').textContent = monitor.length;
+  const rows = activePriority === 'urgent' ? urgent : activePriority === 'soon' ? soon : monitor;
+  visiblePurchaseIds = rows.map(item => purchaseSelectionId(item.product.id));
+  const selectedVisible = visiblePurchaseIds.filter(id => selectedPurchaseIds.has(id)).length;
+  const selectedTotal = selectedPurchaseIds.size;
+  document.getElementById('purchase-count').textContent = `${selectedTotal} ${selectedTotal === 1 ? 'item selecionado' : 'itens selecionados'}`;
+  document.getElementById('purchase-export-button').disabled = selectedTotal === 0;
+  document.getElementById('purchase-subtitle').textContent = `${rows.length} ${rows.length === 1 ? 'produto exibido' : 'produtos exibidos'} conforme os filtros`;
+  document.getElementById('table-summary').textContent = rows.length ? `Exibindo 1 a ${rows.length} de ${rows.length} itens` : 'Exibindo 0 de 0 itens';
+  const selectAll = document.getElementById('select-all');
+  selectAll.checked = visiblePurchaseIds.length > 0 && selectedVisible === visiblePurchaseIds.length;
+  selectAll.indeterminate = selectedVisible > 0 && selectedVisible < visiblePurchaseIds.length;
+  selectAll.disabled = visiblePurchaseIds.length === 0;
 
   const tbody = document.getElementById('purchase-tbody');
   if (!rows.length) {
-    tbody.innerHTML = '<tr><td colspan="6" class="empty-state">Nenhum produto comum abaixo do minimo.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" class="empty-state">Nenhum produto encontrado para estes filtros.</td></tr>';
     return;
   }
 
-  tbody.innerHTML = rows.map(({ product, qty, minimo, suggested, status }) => `
+  tbody.innerHTML = rows.map(({ product, qty, minimo, sales, suggested, status }) => `
     <tr>
+      <td><input type="checkbox" class="purchase-check" data-id="${escapeHtml(purchaseSelectionId(product.id))}" ${selectedPurchaseIds.has(purchaseSelectionId(product.id)) ? 'checked' : ''} onchange="togglePurchaseItem(this.dataset.id, this.checked)" aria-label="Selecionar ${escapeHtml(product.nome)}"></td>
       <td>${productIdentityHTML(product, true)}</td>
       <td>${codesHTML(product)}</td>
-      <td><span class="strong-number">${formatNumber(qty)}</span></td>
+      <td><span class="strong-number ${status.cls === 'out' ? 'stock-out' : ''}">${formatNumber(qty)}</span></td>
       <td>${formatNumber(minimo)}</td>
-      <td><span class="strong-number">${formatNumber(suggested)}</span></td>
-      <td><span class="badge ${status.cls}">${status.label}</span></td>
+      <td>${formatNumber(sales)}</td>
+      <td><span class="strong-number suggested">${formatNumber(suggested)}</span></td>
+      <td><span class="badge ${status.cls}">${status.cls === 'out' ? 'Urgente' : status.cls === 'low' ? 'Em breve' : 'Monitorar'}</span></td>
     </tr>
   `).join('');
+}
+
+function togglePurchaseItem(id, checked) {
+  const selectionId = purchaseSelectionId(id);
+  if (checked) selectedPurchaseIds.add(selectionId); else selectedPurchaseIds.delete(selectionId);
+  renderPurchaseSuggestions();
+}
+
+function toggleSelectAll(checked) {
+  visiblePurchaseIds.forEach(id => {
+    if (checked) selectedPurchaseIds.add(id); else selectedPurchaseIds.delete(id);
+  });
+  renderPurchaseSuggestions();
+}
+
+function purchaseSelectionId(id) {
+  return String(id ?? '');
+}
+
+function getProductSales(id, name) {
+  const days = Number(document.getElementById('filter-period')?.value || 30);
+  const cutoff = days ? Date.now() - days * 86400000 : 0;
+  let total = 0;
+  csvLots.forEach(lot => {
+    if (cutoff && new Date(lot.created_at).getTime() < cutoff) return;
+    (lot.baixas_csv_itens || []).filter(item => item.produto_id === id || normalizeText(item.produto_nome) === normalizeText(name)).forEach(item => total += Number(item.quantidade_csv) || 0);
+  });
+  historyRows.filter(row => (!cutoff || new Date(row.created_at).getTime() >= cutoff) && String(row.tipo || '').startsWith('baixa') && row.tipo !== 'baixa_csv_produto' && (row.produto_id === id || normalizeText(row.produtos?.nome) === normalizeText(name))).forEach(row => total += Math.abs((Number(row.quantidade_nova) || 0) - (Number(row.quantidade_anterior) || 0)));
+  return total;
 }
 
 function renderTopProducts() {
   const totals = new Map();
 
+  const days = Number(document.getElementById('ranking-period')?.value || 30);
+  const cutoff = days ? Date.now() - days * 86400000 : 0;
   csvLots.forEach(lot => {
+    if (cutoff && new Date(lot.created_at).getTime() < cutoff) return;
     (lot.baixas_csv_itens || []).forEach(item => {
-      addTopProduct(totals, item.produto_id, item.produto_nome, Number(item.quantidade_csv) || 0);
+      const product = findProduct(item.produto_id, item.produto_nome);
+      const name = product?.nome || item.produto_nome;
+      addTopProduct(totals, item.produto_id, name, Number(item.quantidade_csv) || 0);
     });
   });
 
   historyRows
-    .filter(row => String(row.tipo || '').startsWith('baixa') && row.tipo !== 'baixa_csv_produto')
+    .filter(row => String(row.tipo || '').startsWith('baixa') && row.tipo !== 'baixa_csv_produto' && (!cutoff || new Date(row.created_at).getTime() >= cutoff))
     .forEach(row => {
       const product = findProduct(row.produto_id, row.produtos?.nome);
       if (product && productCategory(product) !== 'produto') return;
-      addTopProduct(totals, row.produto_id, row.produtos?.nome || 'Produto', Math.abs((row.quantidade_nova || 0) - (row.quantidade_anterior || 0)));
+      if (!product && !row.produtos?.nome) return;
+      addTopProduct(totals, row.produto_id, product?.nome || row.produtos.nome, Math.abs((row.quantidade_nova || 0) - (row.quantidade_anterior || 0)));
     });
 
   const rows = Array.from(totals.values())
@@ -225,31 +389,12 @@ function renderTopProducts() {
 }
 
 function addTopProduct(map, id, name, qty) {
-  if (!qty) return;
-  const key = id || normalizeText(name || '');
-  const current = map.get(key) || { id, name: name || 'Produto', total: 0 };
+  const normalizedName = normalizeText(name);
+  if (!qty || !normalizedName || normalizedName === 'produto') return;
+  const key = id || normalizedName;
+  const current = map.get(key) || { id, name: String(name).trim(), total: 0 };
   current.total += qty;
   map.set(key, current);
-}
-
-function renderCsvLots() {
-  const el = document.getElementById('csv-lots-list');
-  if (!csvLots.length) {
-    el.innerHTML = '<div class="empty-state">Nenhuma importacao CSV registrada ainda.</div>';
-    return;
-  }
-
-  el.innerHTML = csvLots.slice(0, 6).map(lot => `
-    <div class="csv-card">
-      <div class="csv-title">${escapeHtml(lot.arquivo_nome || 'CSV aplicado')}</div>
-      <div class="csv-meta">${formatDate(lot.created_at)} - ${escapeHtml(lot.aplicado_email || 'admin')}</div>
-      <div class="csv-stats">
-        <div class="csv-stat"><strong>${formatNumber(lot.produtos_encontrados || 0)}</strong>encontrados</div>
-        <div class="csv-stat"><strong>${formatNumber(lot.total_aplicado || 0)}</strong>pecas</div>
-        <div class="csv-stat"><strong>${formatNumber(lot.estoque_insuficiente || 0)}</strong>insuficiente</div>
-      </div>
-    </div>
-  `).join('');
 }
 
 function renderAttention() {
@@ -266,42 +411,45 @@ function renderAttention() {
   attentionLists.productWithoutCodes = withoutCodesItems;
   attentionLists.productWithoutMin = withoutMinItems;
 
-  document.getElementById('attention-grid').innerHTML = `
-    <div class="attention-card red">
-      <span>Reposicao urgente</span>
-      <strong>${formatNumber(outItems.length)}</strong>
-      <p>Produtos comuns sem estoque no momento.</p>
-      ${attentionButton('productOut', 'Reposicao urgente', outItems.length)}
-    </div>
-    <div class="attention-card yellow">
-      <span>Comprar em breve</span>
-      <strong>${formatNumber(lowItems.length)}</strong>
-      <p>Produtos comuns abaixo ou no minimo cadastrado.</p>
-      ${attentionButton('productLow', 'Produtos para comprar em breve', lowItems.length)}
-    </div>
-    <div class="attention-card">
-      <span>Cadastro incompleto</span>
-      <strong>${formatNumber(withoutCodesItems.length)}</strong>
-      <p>Produtos sem codigo interno, referencia ou barras.</p>
-      ${attentionButton('productWithoutCodes', 'Produtos com cadastro incompleto', withoutCodesItems.length)}
-    </div>
-    <div class="attention-card">
-      <span>Sem minimo</span>
-      <strong>${formatNumber(withoutMinItems.length)}</strong>
-      <p>Produtos comuns sem alerta minimo configurado.</p>
-      ${attentionButton('productWithoutMin', 'Produtos sem minimo configurado', withoutMinItems.length)}
-    </div>
-    <div class="attention-card yellow">
-      <span>CSV com alerta</span>
-      <strong>${formatNumber(csvProblems)}</strong>
-      <p>Linhas nao encontradas ou com estoque insuficiente nos lotes recentes.</p>
-    </div>
-    <div class="attention-card green">
-      <span>Ultimo fechamento</span>
-      <strong>${escapeHtml(lastCsv)}</strong>
-      <p>Ultima importacao CSV registrada no sistema.</p>
-    </div>
-  `;
+  document.getElementById('attention-grid').innerHTML = qualityCard('red', 'code', 'Sem código', withoutCodesItems.length, 'produtos sem código cadastrado', 'productWithoutCodes', 'Produtos sem código') + qualityCard('yellow', 'alert', 'Sem mínimo', withoutMinItems.length, 'produtos sem estoque mínimo', 'productWithoutMin', 'Produtos sem mínimo') + qualityCard('', 'file', 'CSV com alerta', csvProblems, 'linhas com inconsistências', '', '', 'ocorrências') + `<div class="quality-card last-close"><span class="quality-icon">${iconSVG('clock')}</span><div><strong>Último fechamento</strong><p>${escapeHtml(lastCsv)}</p></div><span class="quality-count"><svg class="icon"><use href="#icon-chevron-right"></use></svg></span></div>`;
+}
+
+function qualityCard(color, icon, title, count, description, key, modalTitle, unit = '') {
+  const tag = key ? 'button' : 'div';
+  const action = key ? ` type="button" onclick="openAttentionModal('${key}', '${modalTitle}')"` : '';
+  return `<${tag} class="quality-card ${color}"${action}><span class="quality-icon">${iconSVG(icon)}</span><div><strong>${title}</strong><p>${description}</p></div><span class="quality-count"><strong>${formatNumber(count)}</strong>${unit ? `<small>${unit}</small>` : ''}<svg class="icon"><use href="#icon-chevron-right"></use></svg></span></${tag}>`;
+}
+
+function iconSVG(name) {
+  return `<svg class="icon" aria-hidden="true"><use href="#icon-${name}"></use></svg>`;
+}
+
+function exportPurchaseList() {
+  const rows = [...selectedPurchaseIds].map(id => products.find(product => purchaseSelectionId(product.id) === id)).filter(Boolean);
+  if (!rows.length) { alert('Selecione ao menos um produto para gerar a lista de compra.'); return; }
+  downloadCsv('lista-de-compra.csv', [['Produto', 'Código', 'Estoque atual', 'Mínimo', 'Sugerido'], ...rows.map(product => [product.nome, product.codigo_interno || product.codigo_referencia || product.sku || '', totalQty(product), Number(product.minimo) || 0, Math.max((Number(product.minimo) || 0) - totalQty(product), 0)])]);
+}
+
+function exportReport() {
+  const rows = filteredProductItems();
+  downloadCsv('relatorio-estoque.csv', [['Produto', 'Código', 'Estoque atual', 'Mínimo', 'Status'], ...rows.map(product => [product.nome, product.codigo_interno || product.codigo_referencia || product.sku || '', totalQty(product), Number(product.minimo) || 0, getStatus(product).label])]);
+}
+
+function downloadCsv(filename, rows) {
+  const csv = rows.map(row => row.map(value => `"${String(value ?? '').replace(/"/g, '""')}"`).join(';')).join('\n');
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' }));
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
+
+function toggleSidebar(forceOpen) {
+  const sidebar = document.getElementById('sidebar');
+  const button = document.getElementById('menu-toggle');
+  const shouldOpen = typeof forceOpen === 'boolean' ? forceOpen : !sidebar.classList.contains('open');
+  sidebar.classList.toggle('open', shouldOpen);
+  if (button) button.setAttribute('aria-expanded', String(shouldOpen));
 }
 
 function renderMachineReport() {
@@ -440,7 +588,7 @@ function renderMachineSales(machineSales) {
       <div class="sale-product">
         ${productPhotoHTML(product, 'small')}
         <div class="sale-product-text">
-          <div class="sale-name">${escapeHtml(product.nome)}</div>
+          <div class="sale-name" title="${escapeHtml(product.nome)}">${escapeHtml(product.nome)}</div>
           <div class="sale-meta">${escapeHtml(seller)}${voltage} - ${formatDate(row.created_at)}</div>
         </div>
       </div>
@@ -558,7 +706,7 @@ function productIdentityHTML(product, showNotes = false) {
   return `<div class="product-identity">
     ${productPhotoHTML(product)}
     <div class="product-identity-text">
-      <strong>${escapeHtml(product.nome)}</strong>
+      <strong title="${escapeHtml(product.nome)}">${escapeHtml(product.nome)}</strong>
       ${notes}
     </div>
   </div>`;
@@ -568,7 +716,7 @@ function rankingIdentityHTML(item) {
   const product = findProduct(item.id, item.name);
   return `<div class="bar-product">
     ${product ? productPhotoHTML(product, 'small') : ''}
-    <div class="bar-name">${escapeHtml(item.name)}</div>
+    <div class="bar-name" title="${escapeHtml(item.name)}">${escapeHtml(item.name)}</div>
   </div>`;
 }
 
@@ -582,7 +730,7 @@ function productPhotoHTML(product, size = '') {
   }
 
   return `<div class="product-thumb${sizeClass}">
-    <img src="${escapeHtml(product.imagem_url)}" alt="" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+    <img src="${escapeHtml(product.imagem_url)}" alt="" loading="lazy" onload="this.style.display='block';this.nextElementSibling.classList.remove('visible')" onerror="this.style.display='none';this.nextElementSibling.classList.add('visible')">
     <span class="product-thumb-fallback">${initial}</span>
   </div>`;
 }
@@ -597,7 +745,10 @@ function closeAttentionModalOnOverlay(event) {
 }
 
 document.addEventListener('keydown', event => {
-  if (event.key === 'Escape') closeAttentionModal();
+  if (event.key === 'Escape') {
+    closeAttentionModal();
+    toggleSidebar(false);
+  }
 });
 
 function codesHTML(product) {
@@ -607,8 +758,9 @@ function codesHTML(product) {
     product.sku ? `Barras: ${product.sku}` : ''
   ].filter(Boolean);
 
-  if (!codes.length) return '<span class="muted">Sem codigos</span>';
-  return `<div class="code-tags">${codes.map(code => `<span class="code-tag">${escapeHtml(code)}</span>`).join('')}</div>`;
+  if (!codes.length) return '<span class="muted">Sem códigos</span>';
+  const fullCodes = codes.join(' · ');
+  return `<div class="code-tags" title="${escapeHtml(fullCodes)}">${codes.map(code => `<span class="code-tag">${escapeHtml(code)}</span>`).join('')}</div>`;
 }
 
 function findProduct(id, name) {
@@ -637,6 +789,11 @@ function formatDate(value) {
     hour: '2-digit',
     minute: '2-digit'
   });
+}
+
+function updateTimestamp() {
+  const el = document.getElementById('updated-at');
+  if (el) el.textContent = `Última atualização: ${formatDate(new Date())}`;
 }
 
 function escapeHtml(value) {

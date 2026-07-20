@@ -1,232 +1,126 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Relatorio Final - Compras</title>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<link rel="stylesheet" href="css/relatorios.css?v=20260714-fotos-relatorio">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Central de Compras e Estoque</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <link rel="stylesheet" href="css/relatorios.css?v=20260719-redesign">
 </head>
 <body>
-
-<div id="login-screen">
-  <div class="login-box">
-    <div class="login-logo">Ponto da Sublimacao</div>
-    <div class="login-title">Relatorio Final</div>
-    <div class="login-sub">Visao de compras e acompanhamento de estoque</div>
-    <div class="field"><label>E-mail</label><input type="email" id="login-email" placeholder="admin@exemplo.com"></div>
-    <div class="field"><label>Senha</label><input type="password" id="login-pass" placeholder="********"></div>
-    <button class="btn-primary" onclick="doLogin()">Entrar</button>
-    <div class="error-msg" id="login-error"></div>
+  <svg class="svg-sprite" aria-hidden="true">
+    <defs>
+      <symbol id="icon-home" viewBox="0 0 24 24"><path d="m3 11 9-8 9 8"/><path d="M5 10v10h14V10M9 20v-6h6v6"/></symbol>
+      <symbol id="icon-box" viewBox="0 0 24 24"><path d="m4 7 8-4 8 4v10l-8 4-8-4Z"/><path d="m4 7 8 4 8-4M12 11v10"/></symbol>
+      <symbol id="icon-machine" viewBox="0 0 24 24"><path d="M5 4h14v5H5zM7 9v4m10-4v4M4 13h16v6H4zM8 19v2m8-2v2"/></symbol>
+      <symbol id="icon-upload" viewBox="0 0 24 24"><path d="M12 16V3m-5 5 5-5 5 5M5 14v7h14v-7"/></symbol>
+      <symbol id="icon-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3 20v-2a6 6 0 0 1 12 0v2M16 5a3 3 0 0 1 0 6m2 3a5 5 0 0 1 3 4v2"/></symbol>
+      <symbol id="icon-chevron-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+      <symbol id="icon-chevron-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+      <symbol id="icon-menu" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></symbol>
+      <symbol id="icon-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+      <symbol id="icon-refresh" viewBox="0 0 24 24"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M6 9a7 7 0 0 1 12-2l2 5M4 12l2 5a7 7 0 0 0 12-2"/></symbol>
+      <symbol id="icon-download" viewBox="0 0 24 24"><path d="M12 3v13m-5-5 5 5 5-5M4 21h16"/></symbol>
+      <symbol id="icon-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></symbol>
+      <symbol id="icon-sliders" viewBox="0 0 24 24"><path d="M4 6h10m4 0h2M4 12h3m4 0h9M4 18h8m4 0h4"/><circle cx="16" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="14" cy="18" r="2"/></symbol>
+      <symbol id="icon-package-x" viewBox="0 0 24 24"><path d="m4 7 8-4 8 4v10l-8 4-8-4Z"/><path d="m4 7 8 4 8-4M12 11v4m-3 2 6 6m0-6-6 6"/></symbol>
+      <symbol id="icon-alert" viewBox="0 0 24 24"><path d="M12 3 2.5 20h19Z"/><path d="M12 9v5m0 3h.01"/></symbol>
+      <symbol id="icon-cart" viewBox="0 0 24 24"><path d="M3 4h2l2.2 11h10.9l2-7H6"/><circle cx="9" cy="19" r="1.5"/><circle cx="18" cy="19" r="1.5"/></symbol>
+      <symbol id="icon-activity" viewBox="0 0 24 24"><path d="M3 12h4l3-7 4 14 3-7h4"/></symbol>
+      <symbol id="icon-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10h.01"/></symbol>
+      <symbol id="icon-code" viewBox="0 0 24 24"><path d="m8 8-4 4 4 4m8-8 4 4-4 4m-2-11-4 14"/></symbol>
+      <symbol id="icon-file" viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6zM14 3v5h5M9 12h6m-6 4h6"/></symbol>
+      <symbol id="icon-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.8 9a2.4 2.4 0 1 1 3.2 2.3c-.7.3-1 1-1 1.7m0 4h.01"/></symbol>
+      <symbol id="icon-x" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+    </defs>
+  </svg>
+  <div id="login-screen">
+    <div class="login-box">
+      <div class="login-logo">Ponto da Sublimação</div>
+      <div class="login-title">Central de Compras</div>
+      <div class="login-sub">Acompanhe reposições e movimentações do estoque.</div>
+      <div class="field"><label for="login-email">E-mail</label><input type="email" id="login-email" placeholder="admin@exemplo.com"></div>
+      <div class="field"><label for="login-pass">Senha</label><input type="password" id="login-pass" placeholder="********"></div>
+      <button class="btn-primary" onclick="doLogin()">Entrar</button>
+      <div class="error-msg" id="login-error"></div>
+    </div>
   </div>
-</div>
 
-<div id="app-screen">
-  <header>
-    <div class="header-left">
-      <div>
-        <div class="header-logo">Relatorio Final</div>
-        <div class="header-sub">Compras e saude do estoque</div>
+  <div id="app-screen" class="app-shell">
+    <aside class="sidebar" id="sidebar">
+      <button class="sidebar-close" type="button" onclick="toggleSidebar(false)" aria-label="Fechar menu"><svg class="icon"><use href="#icon-x"></use></svg></button>
+      <a class="brand" href="relatorios.html">PONTO DA SUBLIMAÇÃO</a>
+      <nav class="side-nav" aria-label="Navegação principal">
+        <button class="side-link active" type="button" data-report-nav="overview" aria-current="page" aria-controls="report-panel-produtos" onclick="navigateReport('overview')"><svg class="icon"><use href="#icon-home"></use></svg> Visão geral</button>
+        <button class="side-link" type="button" data-report-nav="products" aria-controls="purchase-section" onclick="navigateReport('products')"><svg class="icon"><use href="#icon-box"></use></svg> Produtos</button>
+        <button class="side-link" type="button" data-report-nav="machines" aria-controls="report-panel-maquinas" onclick="navigateReport('machines')"><svg class="icon"><use href="#icon-machine"></use></svg> Máquinas e Prensas</button>
+        <button class="side-link" type="button" data-report-nav="imports" aria-controls="csv-imports-section" onclick="navigateReport('imports')"><svg class="icon"><use href="#icon-upload"></use></svg> Importações CSV</button>
+        <a class="side-link" href="admin.html"><svg class="icon"><use href="#icon-users"></use></svg> Cadastros <svg class="icon icon-chevron"><use href="#icon-chevron-right"></use></svg></a>
+      </nav>
+      <div class="sidebar-bottom">
+        <a class="side-link" href="#ajuda"><svg class="icon"><use href="#icon-help"></use></svg> Central de ajuda</a>
+        <button class="account" type="button" onclick="doLogout()"><i>AD</i><span>Administrador<small>Encerrar sessão</small></span><svg class="icon icon-chevron"><use href="#icon-chevron-down"></use></svg></button>
       </div>
-      <div class="readonly-badge">Somente leitura</div>
+    </aside>
+
+    <div class="content-shell">
+      <header class="topbar">
+        <button class="menu-toggle" id="menu-toggle" type="button" onclick="toggleSidebar()" aria-label="Abrir menu" aria-controls="sidebar" aria-expanded="false"><svg class="icon"><use href="#icon-menu"></use></svg></button>
+        <div class="page-title"><h1>Central de Compras e Estoque</h1><p>Acompanhe rupturas, reposições e movimentações do estoque</p></div>
+        <div class="header-actions">
+          <span class="updated-at"><svg class="icon"><use href="#icon-clock"></use></svg><span id="updated-at">Última atualização: —</span></span>
+          <button class="button button-outline" onclick="loadData()"><svg class="icon"><use href="#icon-refresh"></use></svg><span>Atualizar dados</span></button>
+          <button class="button button-primary" onclick="exportReport()"><svg class="icon"><use href="#icon-download"></use></svg><span>Exportar relatório</span></button>
+        </div>
+      </header>
+
+      <main id="reports-top" tabindex="-1">
+        <nav class="report-tabs" role="tablist" aria-label="Tipo de relatório">
+          <button class="report-tab active" id="report-tab-produtos" role="tab" aria-selected="true" aria-controls="report-panel-produtos" onclick="switchReportTab('produtos')">Produtos</button>
+          <button class="report-tab" id="report-tab-maquinas" role="tab" aria-selected="false" aria-controls="report-panel-maquinas" onclick="switchReportTab('maquinas')">Máquinas e Prensas</button>
+        </nav>
+
+        <div class="report-tab-panel active" id="report-panel-produtos" role="tabpanel" aria-labelledby="report-tab-produtos">
+          <section class="filter-panel" aria-label="Filtros de produtos">
+            <label class="search-field" aria-label="Buscar produto ou código"><svg class="icon"><use href="#icon-search"></use></svg><input id="filter-search" type="search" placeholder="Buscar produto ou código" oninput="applyFilters()"></label>
+            <label> Status <select id="filter-status" onchange="applyFilters()"><option value="all">Todos</option><option value="out">Sem estoque</option><option value="low">Estoque baixo</option><option value="ok">Estoque adequado</option></select></label>
+            <label> Categoria <select id="filter-category" onchange="applyFilters()"><option value="all">Todas</option></select></label>
+            <label> Período <select id="filter-period" onchange="applyFilters()"><option value="30">Últimos 30 dias</option><option value="90">Últimos 90 dias</option><option value="all">Todo o período</option></select></label>
+            <button class="clear-filters" type="button" onclick="clearFilters()"><svg class="icon"><use href="#icon-sliders"></use></svg>Limpar filtros</button>
+          </section>
+
+          <section class="summary-grid dashboard-summary">
+            <button class="metric-card metric-out" type="button" onclick="setStatusFilter('out')"><i><svg class="icon"><use href="#icon-package-x"></use></svg></i><span><small>Sem estoque</small><strong id="stat-zerado">-</strong><em>produtos</em></span><svg class="icon metric-chevron"><use href="#icon-chevron-right"></use></svg></button>
+            <button class="metric-card metric-low" type="button" onclick="setStatusFilter('low')"><i><svg class="icon"><use href="#icon-alert"></use></svg></i><span><small>Estoque baixo</small><strong id="stat-baixo">-</strong><em>produtos</em></span><svg class="icon metric-chevron"><use href="#icon-chevron-right"></use></svg></button>
+            <button class="metric-card metric-buy" type="button" onclick="focusPurchaseList()"><i><svg class="icon"><use href="#icon-cart"></use></svg></i><span><small>Compra sugerida</small><strong id="stat-sugerido">-</strong><em>unidades</em></span><svg class="icon metric-chevron"><use href="#icon-chevron-right"></use></svg></button>
+            <div class="metric-card metric-health"><i><svg class="icon"><use href="#icon-activity"></use></svg></i><span><small>Saúde do estoque</small><strong id="stat-saude">-</strong><em id="stat-saude-label">adequado</em></span><svg class="icon metric-chevron"><use href="#icon-chevron-right"></use></svg></div>
+          </section>
+
+          <div class="dashboard-grid">
+            <section class="report-section purchase-section" id="purchase-section" tabindex="-1">
+              <div class="section-header purchase-header"><div><h2>Lista recomendada para reposição</h2><p id="purchase-subtitle">Produtos com necessidade de compra</p></div><div class="selection-actions"><span id="purchase-count">0 itens selecionados</span><button class="button button-primary" id="purchase-export-button" type="button" onclick="exportPurchaseList()" disabled><svg class="icon"><use href="#icon-cart"></use></svg><span>Gerar lista de compra</span></button></div></div>
+              <div class="priority-tabs"><button class="priority-tab active" data-priority="urgent" onclick="setPriorityFilter('urgent')">Reposição urgente <b id="urgent-count">0</b></button><button class="priority-tab" data-priority="soon" onclick="setPriorityFilter('soon')">Comprar em breve <b id="soon-count">0</b></button><button class="priority-tab" data-priority="monitor" onclick="setPriorityFilter('monitor')">Monitorar <b id="monitor-count">0</b></button></div>
+              <div class="table-wrap"><table><thead><tr><th><input type="checkbox" id="select-all" onchange="toggleSelectAll(this.checked)" aria-label="Selecionar todos"></th><th>Produto</th><th>Código</th><th>Estoque atual</th><th>Mínimo</th><th id="sales-period-label">Saída 30 dias</th><th>Sugerido</th><th>Prioridade</th></tr></thead><tbody id="purchase-tbody"></tbody></table></div>
+              <footer class="table-footer"><span id="table-summary">Exibindo 0 itens</span><span>Relatório em tempo real</span></footer>
+            </section>
+            <aside class="insights-column">
+              <section class="report-section quality-section" id="csv-imports-section" tabindex="-1"><div class="section-header"><h2>Qualidade dos dados <svg class="icon title-info"><use href="#icon-info"></use></svg></h2></div><div class="quality-list" id="attention-grid"></div></section>
+              <section class="report-section ranking-section"><div class="section-header"><h2>Produtos com maior saída</h2><select id="ranking-period" onchange="applyFilters()"><option value="30">Últimos 30 dias</option><option value="90">Últimos 90 dias</option><option value="all">Todo o período</option></select></div><div class="bar-list" id="top-products-list"></div></section>
+            </aside>
+          </div>
+        </div>
+
+        <div class="report-tab-panel" id="report-panel-maquinas" role="tabpanel" aria-labelledby="report-tab-maquinas" tabindex="-1">
+          <section class="summary-grid machine-summary"><div class="stat-card"><small>Máquinas / Prensas</small><strong id="machine-stat-total">-</strong></div><div class="stat-card"><small>Unidades em estoque</small><strong id="machine-stat-units">-</strong></div><div class="stat-card"><small>Abaixo do mínimo</small><strong id="machine-stat-low">-</strong></div><div class="stat-card"><small>Sem estoque</small><strong id="machine-stat-out">-</strong></div><div class="stat-card"><small>Baixas registradas</small><strong id="machine-stat-sales">-</strong></div></section>
+          <section class="report-section"><div class="section-header"><div><h2>Sugestão de reposição de máquinas</h2><p>Máquinas e prensas com estoque baixo.</p></div><span class="section-count" id="machine-purchase-count">0 itens</span></div><div class="table-wrap"><table><thead><tr><th>Máquina / Prensa</th><th>Códigos</th><th>110V</th><th>220V</th><th>Total</th><th>Mínimo</th><th>Sugerido</th><th>Status</th></tr></thead><tbody id="machine-purchase-tbody"></tbody></table></div></section>
+          <section class="report-grid"><section class="report-section"><div class="section-header"><div><h2>Máquinas mais vendidas</h2><p>Baseado nas baixas registradas.</p></div></div><div class="bar-list" id="top-machines-list"></div></section><section class="report-section"><div class="section-header"><div><h2>Últimas baixas</h2><p>Movimentações recentes.</p></div></div><div class="sales-list" id="machine-sales-list"></div></section></section>
+          <section class="report-section"><div class="section-header"><div><h2>Pontos de atenção das máquinas</h2><p>Resumo para acompanhar reposição e cadastro.</p></div></div><div class="attention-grid" id="machine-attention-grid"></div></section>
+        </div>
+      </main>
     </div>
-    <div class="header-right">
-      <button class="btn-ghost" onclick="loadData()">Atualizar</button>
-      <a class="btn-ghost" href="admin.html">Admin</a>
-      <button class="btn-logout" onclick="doLogout()">Sair</button>
-    </div>
-  </header>
-
-  <main>
-    <nav class="report-tabs" aria-label="Tipo de relatorio">
-      <button class="report-tab active" id="report-tab-produtos" onclick="switchReportTab('produtos')">Produtos</button>
-      <button class="report-tab" id="report-tab-maquinas" onclick="switchReportTab('maquinas')">Maquinas / Prensas</button>
-    </nav>
-
-    <div class="report-tab-panel active" id="report-panel-produtos">
-    <section class="summary-grid">
-      <div class="stat-card">
-        <div class="stat-label">Produtos comuns</div>
-        <div class="stat-value" id="stat-produtos">-</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Maquinas / Prensas</div>
-        <div class="stat-value" id="stat-maquinas">-</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Abaixo do minimo</div>
-        <div class="stat-value yellow" id="stat-baixo">-</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Sem estoque</div>
-        <div class="stat-value red" id="stat-zerado">-</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Baixado por CSV</div>
-        <div class="stat-value blue" id="stat-csv">-</div>
-      </div>
-    </section>
-
-    <section class="report-section">
-      <div class="section-header">
-        <div>
-          <h2>Sugestao de compra</h2>
-          <p>Produtos comuns com estoque zerado ou abaixo do minimo cadastrado.</p>
-        </div>
-        <span class="section-count" id="purchase-count">0 itens</span>
-      </div>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Produto</th>
-              <th>Codigos</th>
-              <th>Atual</th>
-              <th>Minimo</th>
-              <th>Sugerido</th>
-              <th>Status</th>
-            </tr>
-          </thead>
-          <tbody id="purchase-tbody"></tbody>
-        </table>
-      </div>
-    </section>
-
-    <section class="report-grid">
-      <div class="report-section">
-        <div class="section-header">
-          <div>
-            <h2>Produtos mais baixados</h2>
-            <p>Baseado nas baixas por CSV e no historico carregado.</p>
-          </div>
-          <span class="section-count">Top 10</span>
-        </div>
-        <div class="bar-list" id="top-products-list"></div>
-      </div>
-
-      <div class="report-section">
-        <div class="section-header">
-          <div>
-            <h2>Ultimas importacoes CSV</h2>
-            <p>Resumo dos lotes aplicados no estoque.</p>
-          </div>
-        </div>
-        <div class="csv-list" id="csv-lots-list"></div>
-      </div>
-    </section>
-
-    <section class="report-section">
-      <div class="section-header">
-        <div>
-          <h2>Pontos de atencao</h2>
-          <p>Itens que merecem revisao antes da proxima compra.</p>
-        </div>
-      </div>
-      <div class="attention-grid" id="attention-grid"></div>
-    </section>
-    </div>
-
-    <div class="report-tab-panel" id="report-panel-maquinas">
-      <section class="summary-grid">
-        <div class="stat-card">
-          <div class="stat-label">Maquinas / Prensas</div>
-          <div class="stat-value" id="machine-stat-total">-</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Unidades em estoque</div>
-          <div class="stat-value blue" id="machine-stat-units">-</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Abaixo do minimo</div>
-          <div class="stat-value yellow" id="machine-stat-low">-</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Sem estoque</div>
-          <div class="stat-value red" id="machine-stat-out">-</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Baixas registradas</div>
-          <div class="stat-value green" id="machine-stat-sales">-</div>
-        </div>
-      </section>
-
-      <section class="report-section">
-        <div class="section-header">
-          <div>
-            <h2>Sugestao de reposicao de maquinas</h2>
-            <p>Maquinas e prensas com estoque zerado ou abaixo do minimo cadastrado.</p>
-          </div>
-          <span class="section-count" id="machine-purchase-count">0 itens</span>
-        </div>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Maquina / Prensa</th>
-                <th>Codigos</th>
-                <th>110V</th>
-                <th>220V</th>
-                <th>Total</th>
-                <th>Minimo</th>
-                <th>Sugerido</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody id="machine-purchase-tbody"></tbody>
-          </table>
-        </div>
-      </section>
-
-      <section class="report-grid">
-        <div class="report-section">
-          <div class="section-header">
-            <div>
-              <h2>Maquinas mais vendidas</h2>
-              <p>Baseado nas baixas manuais registradas pelos vendedores.</p>
-            </div>
-            <span class="section-count">Top 10</span>
-          </div>
-          <div class="bar-list" id="top-machines-list"></div>
-        </div>
-
-        <div class="report-section">
-          <div class="section-header">
-            <div>
-              <h2>Ultimas baixas</h2>
-              <p>Movimentacoes recentes de maquinas e prensas.</p>
-            </div>
-          </div>
-          <div class="sales-list" id="machine-sales-list"></div>
-        </div>
-      </section>
-
-      <section class="report-section">
-        <div class="section-header">
-          <div>
-            <h2>Pontos de atencao das maquinas</h2>
-            <p>Resumo para acompanhar reposicao e qualidade dos cadastros.</p>
-          </div>
-        </div>
-        <div class="attention-grid" id="machine-attention-grid"></div>
-      </section>
-    </div>
-  </main>
-</div>
-
-<div class="modal-overlay" id="attention-modal" onclick="closeAttentionModalOnOverlay(event)">
-  <div class="attention-modal" role="dialog" aria-modal="true" aria-labelledby="attention-modal-title">
-    <div class="modal-header">
-      <div>
-        <h2 id="attention-modal-title">Produtos</h2>
-        <p id="attention-modal-subtitle">0 itens encontrados</p>
-      </div>
-      <button class="modal-close" type="button" onclick="closeAttentionModal()" aria-label="Fechar">&times;</button>
-    </div>
-    <div class="modal-product-list" id="attention-modal-list"></div>
   </div>
-</div>
-
-<script src="js/supabase-config.js"></script>
-<script src="js/relatorios.js?v=20260714-dois-administradores"></script>
+  <div class="modal-overlay" id="attention-modal" onclick="closeAttentionModalOnOverlay(event)"><div class="attention-modal" role="dialog" aria-modal="true" aria-labelledby="attention-modal-title"><div class="modal-header"><div><h2 id="attention-modal-title">Produtos</h2><p id="attention-modal-subtitle">0 itens encontrados</p></div><button class="modal-close" type="button" onclick="closeAttentionModal()" aria-label="Fechar"><svg class="icon"><use href="#icon-x"></use></svg></button></div><div class="modal-product-list" id="attention-modal-list"></div></div></div>
+  <script src="js/supabase-config.js"></script>
+  <script src="js/relatorios.js?v=20260719-redesign"></script>
 </body>
 </html>
