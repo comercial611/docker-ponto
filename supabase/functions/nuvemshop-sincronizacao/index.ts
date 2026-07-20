@@ -5,6 +5,7 @@ import { decryptToken, requiredEnv } from "../_shared/nuvemshop.ts";
 const USER_AGENT = "Conferencia de Estoque PDS (comercial@comercial.pontodasublimacao.com.br)";
 const PILOT_CONFIRMATION = "APLICAR 1 ITEM";
 const PILOT_WINDOW_CONFIRMATION = "LIBERAR PILOTO POR 5 MINUTOS";
+const BATCH_MAX_ITEMS = 3;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const wait = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
@@ -180,6 +181,143 @@ async function disablePilotWindow(
   }
 }
 
+async function processReservedBatchItem(
+  supabaseAdmin: ReturnType<typeof createClient>,
+  storeId: number,
+  applicationId: string,
+  reservedItem: Record<string, unknown>,
+  expectedAuditId: string,
+  expectedUserId: string,
+  expectedLimit: number,
+  expectedLocationId: string,
+  encryptionKey: string,
+): Promise<{
+  result: "concluido" | "falhou";
+  confirmedStock: number | null;
+  error: string | null;
+  uncertain: boolean;
+}> {
+  const itemId = integerOrNull(reservedItem.id);
+  const productId = integerOrNull(reservedItem.nuvemshop_produto_id);
+  const variantId = integerOrNull(reservedItem.nuvemshop_variante_id);
+  const previousStock = integerOrNull(reservedItem.estoque_anterior);
+  const destinationStock = integerOrNull(reservedItem.estoque_destino);
+  const unitsPerSale = integerOrNull(reservedItem.unidades_por_venda);
+  if (
+    !itemId
+    || !productId
+    || !variantId
+    || previousStock === null
+    || destinationStock === null
+    || !unitsPerSale
+  ) {
+    return {
+      result: "falhou",
+      confirmedStock: null,
+      error: "Item reservado possui dados externos incompletos.",
+      uncertain: false,
+    };
+  }
+
+  let writeAttempted = false;
+  let confirmedStock: number | null = null;
+  try {
+    const { data: latestConnection, error: latestConnectionError } = await supabaseAdmin
+      .from("nuvemshop_conexoes")
+      .select("token_cifrado, token_iv, escopos, local_estoque_id, escrita_habilitada, escrita_habilitada_ate, escrita_simulacao_id, escrita_habilitada_por, limite_aplicacao")
+      .eq("store_id", storeId)
+      .single();
+    if (latestConnectionError || !latestConnection) {
+      throw new Error("A conexao nao pode ser revalidada.");
+    }
+    if (
+      !isPilotWindowActive(latestConnection as Record<string, unknown>)
+      || integerOrNull(latestConnection.limite_aplicacao) !== expectedLimit
+      || !hasScope(latestConnection.escopos, "write_products")
+      || String(latestConnection.local_estoque_id || "") !== expectedLocationId
+      || String(latestConnection.escrita_simulacao_id || "") !== expectedAuditId
+      || String(latestConnection.escrita_habilitada_por || "") !== expectedUserId
+    ) {
+      throw new Error("As protecoes do lote mudaram depois da reserva.");
+    }
+
+    const { data: localProduct, error: localProductError } = await supabaseAdmin
+      .from("produtos")
+      .select("id, tem_voltagem, quantidade, quantidade_110v, quantidade_220v")
+      .eq("id", reservedItem.produto_id)
+      .single();
+    if (localProductError || !localProduct) {
+      throw new Error("Produto local reservado nao foi encontrado.");
+    }
+    const currentPhysicalStock = localDestination(
+      localProduct as Record<string, unknown>,
+      reservedItem.voltagem,
+    );
+    if (stockForOffer(currentPhysicalStock, unitsPerSale) !== destinationStock) {
+      throw new Error("O estoque local mudou depois da reserva.");
+    }
+
+    const accessToken = await decryptToken(
+      latestConnection.token_cifrado,
+      latestConnection.token_iv,
+      encryptionKey,
+    );
+    const remoteBefore = await loadRemoteProduct(storeId, productId, accessToken);
+    const variantBefore = findRemoteVariant(remoteBefore, variantId);
+    const stockBefore = variantBefore
+      ? strictVariantStock(variantBefore, expectedLocationId)
+      : null;
+    if (!variantBefore || stockBefore === null) {
+      throw new Error("A variante nao possui estoque no local confirmado.");
+    }
+    if (stockBefore !== previousStock) {
+      throw new Error("O estoque externo mudou desde a simulacao.");
+    }
+
+    writeAttempted = true;
+    const writeResponse = await replaceRemoteVariantStock(
+      storeId,
+      productId,
+      variantId,
+      expectedLocationId,
+      destinationStock,
+      accessToken,
+    );
+    await writeResponse.arrayBuffer().catch(() => null);
+
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      await wait(attempt === 0 ? 700 : 1300);
+      const remoteAfter = await loadRemoteProduct(storeId, productId, accessToken);
+      const variantAfter = findRemoteVariant(remoteAfter, variantId);
+      confirmedStock = variantAfter
+        ? strictVariantStock(variantAfter, expectedLocationId)
+        : null;
+      if (confirmedStock === destinationStock) break;
+    }
+
+    if (confirmedStock === destinationStock) {
+      return { result: "concluido", confirmedStock, error: null, uncertain: false };
+    }
+
+    const rejected = !writeResponse.ok && confirmedStock === previousStock;
+    return {
+      result: "falhou",
+      confirmedStock,
+      error: rejected
+        ? `A Nuvemshop recusou a alteracao (HTTP ${writeResponse.status}).`
+        : "O resultado externo ficou incerto apos a tentativa.",
+      uncertain: !rejected,
+    };
+  } catch (error) {
+    return {
+      result: "falhou",
+      confirmedStock,
+      error: error instanceof Error ? error.message : "Falha inesperada no item do lote.",
+      uncertain: writeAttempted,
+    };
+  }
+}
+
 async function loadRemoteProducts(storeId: number, accessToken: string): Promise<unknown[]> {
   const products: unknown[] = [];
   const perPage = 200;
@@ -233,6 +371,14 @@ Deno.serve(async (request) => {
     const operationMode = String(payload?.modo || "");
     const requestedAuditId = String(payload?.auditoria_id || "");
     const requestedAuditItemId = integerOrNull(payload?.item_auditoria_id);
+    const requestedBatchItemsValue = payload?.itens_auditoria_ids;
+    const requestedBatchItemIds = Array.isArray(requestedBatchItemsValue)
+      ? Array.from(new Set(
+        requestedBatchItemsValue
+          .map(integerOrNull)
+          .filter((value): value is number => Boolean(value && value > 0)),
+      ))
+      : [];
     const requestedConfirmation = String(payload?.confirmacao || "");
     if (![
       "simular",
@@ -240,6 +386,10 @@ Deno.serve(async (request) => {
       "habilitar_piloto",
       "desabilitar_piloto",
       "aplicar_piloto",
+      "verificar_lote",
+      "habilitar_lote",
+      "desabilitar_lote",
+      "aplicar_lote",
     ].includes(operationMode)) {
       return jsonResponse({ error: "Modo de operacao nao permitido." }, 400, headers);
     }
@@ -277,14 +427,18 @@ Deno.serve(async (request) => {
       return jsonResponse({ error: "Loja Nuvemshop nao conectada." }, 409, headers);
     }
 
-    if (operationMode === "desabilitar_piloto") {
+    if (operationMode === "desabilitar_piloto" || operationMode === "desabilitar_lote") {
+      const batchMode = operationMode === "desabilitar_lote";
       const { error: windowError } = await supabaseAdmin.rpc(
-        "configurar_janela_piloto_nuvemshop",
+        batchMode
+          ? "configurar_janela_lote_nuvemshop"
+          : "configurar_janela_piloto_nuvemshop",
         {
           p_store_id: storeId,
           p_simulacao_id: UUID_PATTERN.test(requestedAuditId) ? requestedAuditId : null,
           p_solicitado_por: userResult.data.user.id,
           p_habilitar: false,
+          ...(batchMode ? { p_limite: null } : {}),
           p_confirmacao: null,
         },
       );
@@ -297,7 +451,7 @@ Deno.serve(async (request) => {
       }
 
       return jsonResponse({
-        modo: "janela_piloto_desabilitada",
+        modo: batchMode ? "janela_lote_desabilitada" : "janela_piloto_desabilitada",
         store_id: storeId,
         auditoria_id: UUID_PATTERN.test(requestedAuditId) ? requestedAuditId : null,
         escrita_habilitada: false,
@@ -315,6 +469,56 @@ Deno.serve(async (request) => {
       .order("id")
       .limit(501);
     if (linksError) throw linksError;
+
+    if (operationMode === "habilitar_lote") {
+      const batchSize = requestedBatchItemIds.length;
+      const expectedConfirmation = `LIBERAR LOTE DE ${batchSize} ITENS POR 5 MINUTOS`;
+      if (
+        !UUID_PATTERN.test(requestedAuditId)
+        || batchSize < 2
+        || batchSize > BATCH_MAX_ITEMS
+      ) {
+        return jsonResponse({
+          error: "Selecione dois ou tres itens da simulacao recente.",
+          escrita_executada: false,
+        }, 400, headers);
+      }
+      if (requestedConfirmation !== expectedConfirmation) {
+        return jsonResponse({
+          error: `Digite exatamente "${expectedConfirmation}".`,
+          escrita_executada: false,
+        }, 400, headers);
+      }
+
+      const { data: expiresAt, error: windowError } = await supabaseAdmin.rpc(
+        "configurar_janela_lote_nuvemshop",
+        {
+          p_store_id: storeId,
+          p_simulacao_id: requestedAuditId,
+          p_solicitado_por: userResult.data.user.id,
+          p_habilitar: true,
+          p_limite: batchSize,
+          p_confirmacao: requestedConfirmation,
+        },
+      );
+      if (windowError) {
+        console.error("Janela do lote recusada", windowError.message);
+        return jsonResponse({
+          error: "A janela do lote nao foi liberada. Gere uma nova validacao.",
+          escrita_executada: false,
+        }, 409, { ...headers, "Cache-Control": "no-store" });
+      }
+
+      return jsonResponse({
+        modo: "janela_lote_habilitada",
+        store_id: storeId,
+        auditoria_id: requestedAuditId,
+        escrita_habilitada: true,
+        escrita_habilitada_ate: expiresAt,
+        limite_itens: batchSize,
+        escrita_executada: false,
+      }, 200, { ...headers, "Cache-Control": "no-store" });
+    }
 
     if (operationMode === "habilitar_piloto") {
       if (!UUID_PATTERN.test(requestedAuditId)) {
@@ -363,6 +567,158 @@ Deno.serve(async (request) => {
         limite_itens: 1,
         escrita_executada: false,
       }, 200, { ...headers, "Cache-Control": "no-store" });
+    }
+
+    if (operationMode === "aplicar_lote") {
+      const batchSize = requestedBatchItemIds.length;
+      const expectedConfirmation = `APLICAR LOTE DE ${batchSize} ITENS`;
+      if (
+        !UUID_PATTERN.test(requestedAuditId)
+        || batchSize < 2
+        || batchSize > BATCH_MAX_ITEMS
+      ) {
+        return jsonResponse({
+          error: "Selecione dois ou tres itens da simulacao.",
+          escrita_executada: false,
+        }, 400, headers);
+      }
+      if (requestedConfirmation !== expectedConfirmation) {
+        return jsonResponse({
+          error: `Digite exatamente "${expectedConfirmation}".`,
+          escrita_executada: false,
+        }, 400, headers);
+      }
+      if (
+        !hasScope(connection.escopos, "write_products")
+        || !connection.local_estoque_id
+        || !isPilotWindowActive(connection as Record<string, unknown>)
+        || String(connection.escrita_simulacao_id || "") !== requestedAuditId
+        || String(connection.escrita_habilitada_por || "") !== userResult.data.user.id
+        || integerOrNull(connection.limite_aplicacao) !== batchSize
+      ) {
+        return jsonResponse({
+          error: "Aplicacao em lote bloqueada pelas protecoes.",
+          escrita_executada: false,
+        }, 409, { ...headers, "Cache-Control": "no-store" });
+      }
+
+      const operationId = crypto.randomUUID();
+      const { data: applicationId, error: reservationError } = await supabaseAdmin.rpc(
+        "iniciar_aplicacao_lote_nuvemshop",
+        {
+          p_chave_operacao: operationId,
+          p_simulacao_id: requestedAuditId,
+          p_itens_simulacao_ids: requestedBatchItemIds,
+          p_store_id: storeId,
+          p_solicitado_por: userResult.data.user.id,
+        },
+      );
+      if (reservationError || typeof applicationId !== "string" || !UUID_PATTERN.test(applicationId)) {
+        console.error("Reserva do lote recusada", reservationError?.message || "ID ausente");
+        return jsonResponse({
+          error: "A reserva do lote foi recusada. Gere uma nova simulacao.",
+          escrita_executada: false,
+        }, 409, { ...headers, "Cache-Control": "no-store" });
+      }
+
+      const { data: reservedItems, error: reservedItemsError } = await supabaseAdmin
+        .from("nuvemshop_sincronizacao_itens")
+        .select("id, origem_item_id, produto_id, voltagem, nuvemshop_produto_id, nuvemshop_variante_id, unidades_por_venda, estoque_anterior, estoque_destino")
+        .eq("sincronizacao_id", applicationId);
+      if (reservedItemsError || reservedItems?.length !== batchSize) {
+        const { error: interruptError } = await supabaseAdmin.rpc(
+          "interromper_aplicacao_lote_nuvemshop",
+          {
+            p_aplicacao_id: applicationId,
+            p_motivo: "A reserva do lote nao retornou todos os itens.",
+          },
+        );
+        if (interruptError) {
+          console.error("Falha ao interromper reserva incompleta", interruptError.message);
+        }
+        return jsonResponse({
+          error: "A reserva do lote ficou incompleta. Nenhuma escrita foi iniciada.",
+          escrita_executada: false,
+        }, 409, { ...headers, "Cache-Control": "no-store" });
+      }
+
+      const order = new Map(requestedBatchItemIds.map((id, index) => [id, index]));
+      reservedItems.sort((a, b) =>
+        (order.get(Number(a.origem_item_id)) ?? 99)
+        - (order.get(Number(b.origem_item_id)) ?? 99)
+      );
+
+      const results: Record<string, unknown>[] = [];
+      let interrupted = false;
+      for (let itemIndex = 0; itemIndex < reservedItems.length; itemIndex += 1) {
+        const reservedItem = reservedItems[itemIndex];
+        const itemResult = await processReservedBatchItem(
+          supabaseAdmin,
+          storeId,
+          applicationId,
+          reservedItem as Record<string, unknown>,
+          requestedAuditId,
+          userResult.data.user.id,
+          batchSize,
+          String(connection.local_estoque_id),
+          encryptionKey,
+        );
+        const itemId = Number(reservedItem.id);
+        const { error: finalizeError } = await supabaseAdmin.rpc(
+          "finalizar_item_aplicacao_lote_nuvemshop",
+          {
+            p_aplicacao_id: applicationId,
+            p_item_aplicacao_id: itemId,
+            p_resultado: itemResult.result,
+            p_estoque_confirmado: itemResult.confirmedStock,
+            p_erro: itemResult.error,
+          },
+        );
+        if (finalizeError) {
+          console.error("Falha ao finalizar item do lote", finalizeError.message);
+          itemResult.error = "A auditoria do item nao foi finalizada.";
+          itemResult.uncertain = true;
+        }
+        results.push({
+          item_auditoria_id: reservedItem.origem_item_id,
+          estoque_destino: reservedItem.estoque_destino,
+          estoque_confirmado: itemResult.confirmedStock,
+          resultado: itemResult.result,
+          erro: itemResult.error,
+        });
+
+        if (itemResult.result !== "concluido" || itemResult.uncertain) {
+          interrupted = true;
+          if (finalizeError || itemIndex < reservedItems.length - 1) {
+            const { error: interruptError } = await supabaseAdmin.rpc(
+              "interromper_aplicacao_lote_nuvemshop",
+              {
+                p_aplicacao_id: applicationId,
+                p_motivo: itemResult.uncertain
+                  ? "Lote interrompido por resultado externo incerto."
+                  : "Lote interrompido apos falha confirmada.",
+              },
+            );
+            if (interruptError) {
+              console.error("Falha ao interromper itens restantes do lote", interruptError.message);
+            }
+          }
+          break;
+        }
+      }
+
+      return jsonResponse({
+        modo: "aplicacao_lote",
+        operacao_id: operationId,
+        aplicacao_id: applicationId,
+        store_id: storeId,
+        total_reservado: batchSize,
+        total_processado: results.length,
+        interrompido: interrupted,
+        itens: results,
+        escrita_executada: results.some((item) => item.resultado === "concluido"),
+        resultado: interrupted ? "interrompido" : "concluida",
+      }, interrupted ? 409 : 200, { ...headers, "Cache-Control": "no-store" });
     }
 
     if (operationMode === "aplicar_piloto") {
@@ -638,7 +994,9 @@ Deno.serve(async (request) => {
       }
     }
 
-    if (operationMode === "verificar_piloto") {
+    if (operationMode === "verificar_piloto" || operationMode === "verificar_lote") {
+      const batchMode = operationMode === "verificar_lote";
+      const desiredLimit = batchMode ? requestedBatchItemIds.length : 1;
       const writeScopeGranted = hasScope(connection.escopos, "write_products");
       const locationConfirmed = Boolean(connection.local_estoque_id);
       const linksWithinLimit = Boolean(links?.length) && links.length <= 500;
@@ -647,7 +1005,11 @@ Deno.serve(async (request) => {
         && String(connection.escrita_simulacao_id || "") === requestedAuditId
         && String(connection.escrita_habilitada_por || "") === userResult.data.user.id;
       const applicationLimit = integerOrNull(connection.limite_aplicacao) || 1;
-      const safePilotLimit = applicationLimit === 1;
+      const safePilotLimit = batchMode
+        ? desiredLimit >= 2
+          && desiredLimit <= BATCH_MAX_ITEMS
+          && (!writeWindowActive || applicationLimit === desiredLimit)
+        : applicationLimit === 1;
       const blockers: string[] = [];
       let simulationValid = false;
       let simulationExpiresAt: string | null = null;
@@ -677,7 +1039,11 @@ Deno.serve(async (request) => {
       if (!locationConfirmed) blockers.push("O local de estoque ainda nao foi confirmado.");
       if (!links?.length) blockers.push("Nenhum vinculo ativo foi encontrado para esta loja.");
       if (links && links.length > 500) blockers.push("A quantidade de vinculos excede o limite de seguranca.");
-      if (!safePilotLimit) blockers.push("O limite do piloto precisa permanecer em um item.");
+      if (!safePilotLimit) {
+        blockers.push(batchMode
+          ? "O lote deve conter dois ou tres itens e coincidir com a janela ativa."
+          : "O limite do piloto precisa permanecer em um item.");
+      }
       if (!simulationValid) blockers.push("A simulacao precisa ser recente, concluida e sem falhas.");
       if (!writeWindowActive) {
         blockers.push("A janela temporaria de escrita permanece fechada ou expirada.");
@@ -692,7 +1058,7 @@ Deno.serve(async (request) => {
         && simulationValid;
 
       return jsonResponse({
-        modo: "verificacao_piloto",
+        modo: batchMode ? "verificacao_lote" : "verificacao_piloto",
         store_id: storeId,
         escopo_escrita: writeScopeGranted,
         local_confirmado: locationConfirmed,
@@ -712,8 +1078,12 @@ Deno.serve(async (request) => {
         janela_ativa: writeWindowActive,
         escrita_habilitada: writeWindowMatches,
         escrita_habilitada_ate: writeWindowActive ? connection.escrita_habilitada_ate : null,
-        confirmacao_liberacao_exigida: PILOT_WINDOW_CONFIRMATION,
-        confirmacao_exigida: PILOT_CONFIRMATION,
+        confirmacao_liberacao_exigida: batchMode
+          ? `LIBERAR LOTE DE ${desiredLimit} ITENS POR 5 MINUTOS`
+          : PILOT_WINDOW_CONFIRMATION,
+        confirmacao_exigida: batchMode
+          ? `APLICAR LOTE DE ${desiredLimit} ITENS`
+          : PILOT_CONFIRMATION,
         requisitos_atendidos: prerequisitesMet,
         pode_habilitar: prerequisitesMet && !writeWindowActive,
         pronto_para_aplicar: blockers.length === 0,
