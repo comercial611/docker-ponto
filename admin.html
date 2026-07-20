@@ -316,6 +316,7 @@
         <span class="nuvemshop-preview-validation" id="nuvemshop-preview-validation">Previa ainda nao validada no servidor.</span>
         <div class="filters-row">
           <button class="btn-cancel" id="nuvemshop-pilot-open" onclick="openNuvemshopPilotModal()" disabled>Verificar piloto</button>
+          <button class="btn-cancel" id="nuvemshop-batch-open" onclick="openNuvemshopBatchModal()" disabled>Aplicar lote</button>
           <button class="btn-save" id="nuvemshop-simulation-open" onclick="openNuvemshopSimulationModal()" disabled>Validar no servidor</button>
         </div>
       </div>
@@ -514,13 +515,13 @@
 <!-- MODAL VERIFICACAO DO PILOTO NUVEMSHOP -->
 <div class="modal-overlay" id="nuvemshop-pilot-modal" onclick="if (event.target === this) closeNuvemshopPilotModal()">
   <div class="modal nuvemshop-pilot-modal">
-    <div class="modal-title">Prontidao da aplicacao piloto</div>
+    <div class="modal-title" id="nuvemshop-pilot-modal-title">Prontidao da aplicacao piloto</div>
     <div class="nuvemshop-pilot-summary" id="nuvemshop-pilot-summary"></div>
     <div class="nuvemshop-pilot-result" id="nuvemshop-pilot-result"></div>
     <div class="nuvemshop-pilot-window" id="nuvemshop-pilot-window">
       <div class="nuvemshop-pilot-application-title">Janela temporaria de escrita</div>
       <div class="nuvemshop-pilot-window-copy">
-        A liberacao dura no maximo cinco minutos e sera encerrada depois da primeira tentativa.
+        A liberacao dura no maximo cinco minutos e sera encerrada automaticamente depois da tentativa autorizada.
       </div>
       <div class="form-field nuvemshop-pilot-confirmation">
         <label for="nuvemshop-pilot-window-confirmation">Confirmacao para liberar</label>
@@ -533,7 +534,7 @@
       </div>
     </div>
     <div class="nuvemshop-pilot-application" id="nuvemshop-pilot-application">
-      <div class="nuvemshop-pilot-application-title">Selecionar item do piloto</div>
+      <div class="nuvemshop-pilot-application-title" id="nuvemshop-pilot-selection-title">Selecionar item do piloto</div>
       <div class="nuvemshop-pilot-items" id="nuvemshop-pilot-items"></div>
       <div class="form-field nuvemshop-pilot-confirmation">
         <label for="nuvemshop-pilot-confirmation">Confirmacao obrigatoria</label>
