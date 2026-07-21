@@ -1214,12 +1214,12 @@ function openNuvemshopApplicationModal(mode) {
     ? 'Aplicacao controlada em lote'
     : 'Prontidao da aplicacao piloto';
   document.getElementById('nuvemshop-pilot-selection-title').textContent = batchMode
-    ? 'Selecionar de 2 a 3 itens'
+    ? 'Selecionar de 2 a 5 itens'
     : 'Selecionar item do piloto';
   document.getElementById('nuvemshop-pilot-summary').innerHTML =
     `A verificacao usara a auditoria <strong>${escapeHtml(nuvemshopServerSimulation.auditoria_id)}</strong> como referencia.<br>` +
     (batchMode
-      ? 'Escolha de 2 a 3 itens. A validacao nao altera estoques e o lote para no primeiro resultado incerto.'
+      ? 'Escolha de 2 a 5 itens. A validacao nao altera estoques e o lote para no primeiro resultado incerto.'
       : 'A verificacao inicial nao altera estoques. A aplicacao so sera liberada depois de todas as protecoes.');
   const result = document.getElementById('nuvemshop-pilot-result');
   result.className = 'nuvemshop-pilot-result';
@@ -1289,7 +1289,7 @@ function renderNuvemshopPilotApplication() {
 
   section.classList.add('visible');
   input.placeholder = batchMode && selectedIds.length < 2
-    ? 'Selecione de 2 a 3 itens primeiro'
+    ? 'Selecione de 2 a 5 itens primeiro'
     : confirmation;
   if (!candidates.length) {
     itemsElement.innerHTML = '<div class="nuvemshop-audit-empty">Esta validacao nao possui item que alteraria o estoque.</div>';
@@ -1330,7 +1330,7 @@ function renderNuvemshopPilotApplication() {
       ? 'Itens conferidos. Libere a janela temporaria e depois confirme a aplicacao do lote.'
       : 'Selecione o item, libere a janela temporaria e depois confirme a aplicacao.';
   } else if (batchMode && selectedIds.length < 2) {
-    note.textContent = 'Selecione no minimo 2 e no maximo 3 itens. Depois execute a verificacao das protecoes.';
+    note.textContent = 'Selecione no minimo 2 e no maximo 5 itens. Depois execute a verificacao das protecoes.';
   } else if (batchMode && !nuvemshopPilotReadiness) {
     note.textContent = `${selectedIds.length} itens selecionados. Execute a verificacao das protecoes antes de liberar a escrita.`;
   } else {
@@ -1350,10 +1350,10 @@ function selectNuvemshopPilotItem(itemId) {
   if (isNuvemshopBatchMode()) {
     if (nuvemshopBatchSelectedItemIds.includes(normalizedItemId)) {
       nuvemshopBatchSelectedItemIds = nuvemshopBatchSelectedItemIds.filter(id => id !== normalizedItemId);
-    } else if (nuvemshopBatchSelectedItemIds.length < 3) {
+    } else if (nuvemshopBatchSelectedItemIds.length < 5) {
       nuvemshopBatchSelectedItemIds = [...nuvemshopBatchSelectedItemIds, normalizedItemId];
     } else {
-      document.getElementById('nuvemshop-pilot-error').textContent = 'O lote controlado aceita no maximo 3 itens.';
+      document.getElementById('nuvemshop-pilot-error').textContent = 'O lote controlado aceita no maximo 5 itens.';
       return;
     }
     nuvemshopPilotReadiness = null;
@@ -1378,7 +1378,7 @@ function updateNuvemshopPilotApplyButton() {
   const selectedIds = selectedNuvemshopApplicationItemIds();
   const candidateIds = new Set(nuvemshopPilotCandidates().map(item => Number(item.auditoria_item_id)));
   const selectionIsValid = isNuvemshopBatchMode()
-    ? selectedIds.length >= 2 && selectedIds.length <= 3 && selectedIds.every(id => candidateIds.has(id))
+    ? selectedIds.length >= 2 && selectedIds.length <= 5 && selectedIds.every(id => candidateIds.has(id))
     : selectedIds.length === 1 && candidateIds.has(selectedIds[0]);
   button.disabled = !nuvemshopPilotReadiness?.pronto_para_aplicar ||
     !selectionIsValid ||
@@ -1607,8 +1607,8 @@ async function runNuvemshopPilotReadiness() {
   errorElement.textContent = '';
   const batchMode = isNuvemshopBatchMode();
   const selectedIds = selectedNuvemshopApplicationItemIds();
-  if (batchMode && (selectedIds.length < 2 || selectedIds.length > 3)) {
-    errorElement.textContent = 'Selecione de 2 a 3 itens antes de verificar as protecoes do lote.';
+  if (batchMode && (selectedIds.length < 2 || selectedIds.length > 5)) {
+    errorElement.textContent = 'Selecione de 2 a 5 itens antes de verificar as protecoes do lote.';
     button.disabled = false;
     button.textContent = 'Verificar protecoes';
     return;
@@ -1665,11 +1665,11 @@ async function runNuvemshopPilotApplication() {
     return;
   }
   if (
-    (batchMode && (selectedIds.length < 2 || selectedIds.length > 3)) ||
+    (batchMode && (selectedIds.length < 2 || selectedIds.length > 5)) ||
     (!batchMode && !selectedItem)
   ) {
     errorElement.textContent = batchMode
-      ? 'Selecione de 2 a 3 itens auditados.'
+      ? 'Selecione de 2 a 5 itens auditados.'
       : 'Selecione exatamente um item auditado.';
     return;
   }
