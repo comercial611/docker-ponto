@@ -23,7 +23,7 @@ begin
      or not v_conexao.escrita_habilitada
      or v_conexao.escrita_habilitada_ate is null
      or v_conexao.escrita_habilitada_ate <= clock_timestamp()
-     or v_conexao.limite_aplicacao not between 1 and 5
+     or v_conexao.limite_aplicacao not between 1 and 10
      or new.total_itens is distinct from v_conexao.limite_aplicacao
      or new.origem_simulacao_id is distinct from v_conexao.escrita_simulacao_id
      or new.solicitado_por is distinct from v_conexao.escrita_habilitada_por then
@@ -72,8 +72,8 @@ begin
     return null;
   end if;
 
-  if p_limite not between 2 and 5 then
-    raise exception 'O lote controlado deve conter de dois a cinco itens.';
+  if p_limite not between 2 and 10 then
+    raise exception 'O lote controlado deve conter de dois a dez itens.';
   end if;
 
   if p_confirmacao is distinct from (
@@ -147,9 +147,9 @@ begin
      or p_simulacao_id is null
      or p_store_id is null
      or p_solicitado_por is null
-     or v_total not between 2 and 5
+     or v_total not between 2 and 10
      or v_total_distinto <> v_total then
-    raise exception 'O lote exige de dois a cinco itens distintos.';
+    raise exception 'O lote exige de dois a dez itens distintos.';
   end if;
 
   select c.*
@@ -392,7 +392,7 @@ begin
 
   if not found
      or v_aplicacao.modo <> 'aplicacao'
-     or v_aplicacao.total_itens not between 2 and 5
+     or v_aplicacao.total_itens not between 2 and 10
      or v_aplicacao.status <> 'processando' then
     raise exception 'Aplicacao em lote nao esta em processamento.';
   end if;
@@ -476,7 +476,7 @@ begin
   from public.nuvemshop_sincronizacoes
   where id = p_aplicacao_id
     and modo = 'aplicacao'
-    and total_itens between 2 and 5
+    and total_itens between 2 and 10
     and status = 'processando'
   for update;
 
