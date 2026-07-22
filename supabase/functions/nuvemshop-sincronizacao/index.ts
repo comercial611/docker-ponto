@@ -676,6 +676,7 @@ Deno.serve(async (request) => {
         );
         if (finalizeError) {
           console.error("Falha ao finalizar item do lote", finalizeError.message);
+          itemResult.result = "falhou";
           itemResult.error = "A auditoria do item nao foi finalizada.";
           itemResult.uncertain = true;
         }
