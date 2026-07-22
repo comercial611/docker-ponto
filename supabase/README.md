@@ -68,11 +68,11 @@ Esta pasta documenta a configuracao de seguranca usada no Supabase de producao.
 - `22-reserva-aplicacao-piloto-nuvemshop.sql`: vincula uma aplicacao a uma simulacao recente, reserva somente um item, bloqueia repeticao e registra o resultado confirmado pelo servidor.
 - `23-janela-temporaria-piloto-nuvemshop.sql`: troca o interruptor manual por uma janela auditada de cinco minutos, bloqueia aplicacoes fora do prazo e desliga a escrita depois da primeira tentativa.
 - `24-multiplicadores-variantes-nuvemshop.sql`: permite varias ofertas externas para o mesmo produto fisico, registra quantas unidades cada venda consome e recalcula o estoque externo por divisao inteira sem alterar os vinculos existentes.
-- `25-aplicacao-lote-controlada-nuvemshop.sql`: amplia a janela protegida para lotes de dois ou tres itens, reserva todos atomicamente, registra cada resultado e interrompe os itens restantes diante de qualquer falha ou incerteza.
+- `25-aplicacao-lote-controlada-nuvemshop.sql`: cria a aplicacao protegida em lote, posteriormente ampliada e validada para dois a dez itens; reserva todos atomicamente, registra cada resultado e interrompe os itens restantes diante de qualquer falha ou incerteza.
 - `functions/nuvemshop-oauth`: conclui a instalacao OAuth e salva o token criptografado, sem exibir a credencial.
 - `functions/nuvemshop-lgpd`: recebe os tres webhooks obrigatorios de privacidade e valida a assinatura da Nuvemshop.
 - `functions/nuvemshop-catalogo`: consulta o catalogo e os locais de estoque da Nuvemshop somente para administradores, sem alterar o estoque externo.
-- `functions/nuvemshop-sincronizacao`: recalcula a previa, verifica as protecoes e aplica um item piloto ou um lote controlado de dois a tres itens durante uma janela temporaria confirmada; cada escrita e relida e o lote para diante de qualquer falha ou incerteza.
+- `functions/nuvemshop-sincronizacao`: recalcula a previa, verifica as protecoes e aplica um item piloto ou um lote controlado de dois a dez itens durante uma janela temporaria confirmada; cada escrita e relida e o lote para diante de qualquer falha ou incerteza.
 - `rollback-segundo-admin-principal.sql`: devolve o login vendas4 ao perfil funcionario em caso de necessidade.
 - `rollback-policies-abertas.sql`: volta para as policies antigas em caso de emergencia.
 
