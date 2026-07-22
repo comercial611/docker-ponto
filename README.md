@@ -1,40 +1,69 @@
-# Sistema de Estoque — Ponto da Sublimação
+# Sistema de Estoque - Ponto da Sublimacao
 
-Sistema interno de controle de estoque em tempo real, com três áreas de acesso separadas por permissão. Construído com HTML/CSS/JS puro (sem build, sem dependências de instalação) e Supabase como backend (banco de dados, autenticação e realtime).
+Sistema interno para controle de estoque fisico, movimentacoes da loja e
+sincronizacao controlada com a Nuvemshop.
 
-## Estrutura do projeto
+O projeto usa HTML, CSS e JavaScript sem etapa de build. O backend e fornecido
+pelo Supabase, com PostgreSQL, Auth, Row Level Security (RLS), Realtime, funcoes
+SQL e Edge Functions. A publicacao do frontend e feita pelo GitHub Pages.
 
+## Areas do sistema
+
+| Area | Arquivo | Finalidade |
+| --- | --- | --- |
+| Inicio | `index.html` | Direciona cada usuario para sua area de trabalho. |
+| Administracao | `admin.html` | Produtos, dashboard, CSV, Nuvemshop, vendedores e historico. |
+| Estoque desktop | `funcionario.html` | Contagem e atualizacao de estoque pelo computador. |
+| App Estoque | `funcionario-app.html` | Contagem rapida no celular, fotos, historico e observacoes. |
+| Vendedor | `vendedor.html` | Consulta, baixa de maquinas e historico do vendedor. |
+| Relatorios | `relatorios.html` | Indicadores de compras, reposicao e pontos de atencao. |
+
+Cada area valida sua propria sessao pelo Supabase Auth. As permissoes efetivas
+nao dependem apenas da tela: elas tambem sao verificadas no banco por RLS e por
+funcoes seguras.
+
+## Estrutura
+
+```text
+.
+|-- css/                    Estilos separados por area
+|-- docs/                   Documentacao de arquitetura e operacao
+|-- js/                     Comportamento das telas e cliente Supabase
+|-- supabase/               SQL versionado, Edge Functions e documentacao
+|-- admin.html
+|-- funcionario-app.html
+|-- funcionario.html
+|-- index.html
+|-- relatorios.html
+`-- vendedor.html
 ```
-├── index.html          → Página inicial com os 3 cards de acesso
-├── admin.html           → Área administrativa (cadastro, dashboard, histórico, vendedores)
-├── funcionario.html     → Área do estoque (atualização de contagem)
-├── vendedor.html        → Área do vendedor (consulta + baixa por venda)
-└── README.md
-```
 
-## Como funciona
+## Documentacao
 
-- **index.html** é a porta de entrada. Mostra 3 cards (Administração, Estoque, Vendedor) que linkam para o respectivo arquivo.
-- Cada arquivo (`admin.html`, `funcionario.html`, `vendedor.html`) tem sua própria tela de login, totalmente independente dos outros.
-- Não existe um "login único" entre as áreas — cada uma valida e mantém sua própria sessão via Supabase Auth.
+- [Arquitetura do sistema](docs/ARQUITETURA.md)
+- [Configuracao e historico do Supabase](supabase/README.md)
 
-## Backend (Supabase)
+## Seguranca
 
-- **Banco de dados:** tabelas `produtos`, `historico` e `vendedores`, todas com Row Level Security (RLS) habilitado — nenhuma leitura ou escrita funciona sem autenticação.
-- **Autenticação:** login por e-mail/senha (admin e funcionário) e por usuário/senha simulado via e-mail interno (`usuario@vendedor.estoque.local`) para vendedores.
-- **Tempo real:** mudanças em `produtos` e `historico` são propagadas instantaneamente via Supabase Realtime (WebSocket).
-- **Edge Function:** `criar-vendedor` — roda no servidor do Supabase (não no navegador) para criar/editar/remover logins de vendedor com segurança, sem expor a chave secreta no frontend.
+- O navegador usa somente a chave publica do Supabase, centralizada em
+  `js/supabase-config.js`.
+- Chaves administrativas, tokens da Nuvemshop e segredos nunca devem ser
+  incluidos no frontend ou em commits.
+- Alteracoes de estoque passam por funcoes SQL ou Edge Functions autorizadas.
+- O Supabase esta em producao. Todo SQL deve ser revisado e aplicado de forma
+  incremental, seguindo a ordem e as instrucoes de `supabase/README.md`.
 
-## Variáveis de ambiente / configuração
+## Fluxo de alteracao
 
-As credenciais públicas do Supabase ficam centralizadas em `js/supabase-config.js`. A chave usada é a pública (`sb_publishable_...`), segura para uso no navegador — a chave secreta nunca aparece em nenhum arquivo deste repositório.
+1. Atualizar a `main` local.
+2. Criar uma branch pequena e com objetivo unico.
+3. Testar localmente e conferir o impacto no Supabase quando houver backend.
+4. Abrir Pull Request e revisar os arquivos alterados.
+5. Fazer merge somente depois dos testes.
+6. Confirmar o deploy do GitHub Pages e executar um teste curto em producao.
 
-## Hospedagem
+## Observacao
 
-Hospedado via Netlify (deploy direto da pasta, sem build necessário). Qualquer alteração nos arquivos `.html` pode ser testada localmente abrindo o arquivo no navegador, e publicada subindo a pasta inteira novamente no Netlify ou conectando este repositório ao Netlify para deploy automático a cada push.
-
-## Manutenção
-
-- Para editar uma área, abra apenas o arquivo correspondente (`admin.html`, `funcionario.html` ou `vendedor.html`) — são independentes entre si.
-- O `index.html` raramente precisa de alteração, a menos que se adicione uma nova área de acesso.
-- Mudanças na estrutura do banco (novas colunas, tabelas) exigem rodar o SQL correspondente direto no SQL Editor do Supabase.
+O Supabase e a fonte de verdade do estoque fisico. A Nuvemshop recebe estoques
+calculados a partir dos vinculos confirmados e das regras de cada oferta, mas
+nao substitui o cadastro fisico local.
