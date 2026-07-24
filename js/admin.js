@@ -47,8 +47,10 @@ let baixaVoltagemSelecionada = null; // 'v110' | 'v220' | null
 
 // ─── NOTIFICAÇÕES ────────────────────────────────────────
 let notifications = [];
+let dismissedNotificationSources = new Set();
 let productsSnapshot = {}; // { id: { quantidade, quantidade_110v, quantidade_220v, minimo, tem_voltagem } }
 const NOTIFICATIONS_STORAGE_KEY = 'admin-notifications';
+const DISMISSED_NOTIFICATIONS_STORAGE_KEY = 'admin-notifications-dismissed';
 
 function snapshotProducts(list) {
   const snap = {};
@@ -73,28 +75,32 @@ function statusFromQty(qty, minimo) {
 function loadSavedNotifications() {
   try {
     const saved = JSON.parse(localStorage.getItem(NOTIFICATIONS_STORAGE_KEY) || '[]');
+    const dismissed = JSON.parse(localStorage.getItem(DISMISSED_NOTIFICATIONS_STORAGE_KEY) || '[]');
+    dismissedNotificationSources = new Set(Array.isArray(dismissed) ? dismissed : []);
     notifications = saved
       .map(n => ({ ...n, time: new Date(n.time) }))
       .filter(n => n.id && n.text && !Number.isNaN(n.time.getTime()));
   } catch {
     notifications = [];
+    dismissedNotificationSources = new Set();
   }
   renderNotifDropdown();
 }
 
 function saveNotifications() {
   localStorage.setItem(NOTIFICATIONS_STORAGE_KEY, JSON.stringify(notifications.slice(0, 50)));
+  localStorage.setItem(DISMISSED_NOTIFICATIONS_STORAGE_KEY, JSON.stringify([...dismissedNotificationSources].slice(-500)));
 }
 
-function pushNotification(color, text, sourceId) {
-  if (sourceId && notifications.some(n => n.sourceId === sourceId)) return;
+function pushNotification(color, text, sourceId, time = new Date(), showToastMessage = true) {
+  if (sourceId && (dismissedNotificationSources.has(sourceId) || notifications.some(n => n.sourceId === sourceId))) return;
 
-  const notif = { id: Date.now() + Math.random(), sourceId, color, text, time: new Date() };
+  const notif = { id: Date.now() + Math.random(), sourceId, color, text, time: new Date(time) };
   notifications.unshift(notif);
   if (notifications.length > 50) notifications.pop();
   saveNotifications();
   renderNotifDropdown();
-  showToast(color, text);
+  if (showToastMessage) showToast(color, text);
 }
 
 function renderNotifDropdown() {
@@ -124,12 +130,17 @@ function toggleNotifDropdown() {
 }
 
 function clearNotifications() {
+  notifications.forEach(n => {
+    if (n.sourceId) dismissedNotificationSources.add(n.sourceId);
+  });
   notifications = [];
   saveNotifications();
   renderNotifDropdown();
 }
 
 function deleteNotification(id) {
+  const notification = notifications.find(n => n.id === id);
+  if (notification?.sourceId) dismissedNotificationSources.add(notification.sourceId);
   notifications = notifications.filter(n => n.id !== id);
   saveNotifications();
   renderNotifDropdown();
@@ -201,8 +212,12 @@ function isBaixaTipo(tipo) {
   return String(tipo || '').startsWith('baixa');
 }
 
-function pushHistoryNotification(record) {
-  if (!record) return;
+function shouldNotifyHistoryRecord(record) {
+  return ['contagem', 'baixa', 'baixa_manual_produto'].includes(String(record?.tipo || ''));
+}
+
+function pushHistoryNotification(record, showToastMessage = true) {
+  if (!record || !shouldNotifyHistoryRecord(record)) return;
 
   const product = products.find(p => p.id === record.produto_id);
   const productName = product?.nome || 'Produto';
@@ -213,13 +228,17 @@ function pushHistoryNotification(record) {
 
   if (isBaixaTipo(record.tipo)) {
     const vendedor = record.vendedor || record.usuario || 'vendedor';
-    pushNotification('blue', `<strong>${productName}</strong>${volt}: baixa de ${before} para ${after} por ${vendedor}`, sourceId);
+    pushNotification('blue', `<strong>${productName}</strong>${volt}: baixa de ${before} para ${after} por ${vendedor}`, sourceId, record.created_at, showToastMessage);
     return;
   }
 
   const usuario = record.usuario || 'funcionário';
   const color = after >= before ? 'green' : 'yellow';
-  pushNotification(color, `<strong>${productName}</strong>${volt}: contagem de ${before} para ${after} por ${usuario}`, sourceId);
+  pushNotification(color, `<strong>${productName}</strong>${volt}: contagem de ${before} para ${after} por ${usuario}`, sourceId, record.created_at, showToastMessage);
+}
+
+function restoreRecentHistoryNotifications(rows) {
+  [...rows].reverse().forEach(record => pushHistoryNotification(record, false));
 }
 
 async function checkSession() {
@@ -266,6 +285,7 @@ async function init() {
   await loadProducts();
   await loadVendedores();
   await loadHistory();
+  restoreRecentHistoryNotifications(historyRows.filter(shouldNotifyHistoryRecord).slice(0, 50));
   await loadCsvLots();
   subscribeRealtime();
 }
