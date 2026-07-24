@@ -5,7 +5,7 @@ import { decryptToken, requiredEnv } from "../_shared/nuvemshop.ts";
 const USER_AGENT = "Conferencia de Estoque PDS (comercial@comercial.pontodasublimacao.com.br)";
 const PILOT_CONFIRMATION = "APLICAR 1 ITEM";
 const PILOT_WINDOW_CONFIRMATION = "LIBERAR PILOTO POR 5 MINUTOS";
-const BATCH_MAX_ITEMS = 10;
+const BATCH_MAX_ITEMS = 15;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const wait = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
@@ -479,7 +479,7 @@ Deno.serve(async (request) => {
         || batchSize > BATCH_MAX_ITEMS
       ) {
         return jsonResponse({
-          error: "Selecione de dois a dez itens da simulacao recente.",
+          error: `Selecione de dois a ${BATCH_MAX_ITEMS} itens da simulacao recente.`,
           escrita_executada: false,
         }, 400, headers);
       }
@@ -578,7 +578,7 @@ Deno.serve(async (request) => {
         || batchSize > BATCH_MAX_ITEMS
       ) {
         return jsonResponse({
-          error: "Selecione de dois a dez itens da simulacao.",
+          error: `Selecione de dois a ${BATCH_MAX_ITEMS} itens da simulacao.`,
           escrita_executada: false,
         }, 400, headers);
       }
@@ -1042,7 +1042,7 @@ Deno.serve(async (request) => {
       if (links && links.length > 500) blockers.push("A quantidade de vinculos excede o limite de seguranca.");
       if (!safePilotLimit) {
         blockers.push(batchMode
-          ? "O lote deve conter de dois a dez itens e coincidir com a janela ativa."
+          ? `O lote deve conter de dois a ${BATCH_MAX_ITEMS} itens e coincidir com a janela ativa.`
           : "O limite do piloto precisa permanecer em um item.");
       }
       if (!simulationValid) blockers.push("A simulacao precisa ser recente, concluida e sem falhas.");
