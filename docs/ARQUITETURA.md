@@ -48,7 +48,8 @@ flowchart LR
 
 ### Administracao
 
-Arquivos principais: `admin.html`, `css/admin.css` e `js/admin.js`.
+Arquivos principais: `admin.html`, `css/admin.css`, `js/admin-utils.js`,
+`js/admin-nuvemshop-auditoria.js` e `js/admin.js`.
 
 Responsabilidades:
 
