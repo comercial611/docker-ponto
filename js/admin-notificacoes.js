@@ -4,6 +4,18 @@ let dismissedNotificationSources = new Set();
 let productsSnapshot = {}; // { id: { quantidade, quantidade_110v, quantidade_220v, minimo, tem_voltagem } }
 const NOTIFICATIONS_STORAGE_KEY = 'admin-notifications';
 const DISMISSED_NOTIFICATIONS_STORAGE_KEY = 'admin-notifications-dismissed';
+const NOTIFICATION_COLORS = new Set(['green', 'yellow', 'red', 'blue']);
+const DEFAULT_NOTIFICATION_COLOR = 'blue';
+
+function sanitizeNotificationText(text) {
+  return escapeHtml(text)
+    .replace(/&lt;strong&gt;/g, '<strong>')
+    .replace(/&lt;\/strong&gt;/g, '</strong>');
+}
+
+function normalizeNotificationColor(color) {
+  return NOTIFICATION_COLORS.has(color) ? color : DEFAULT_NOTIFICATION_COLOR;
+}
 
 function snapshotProducts(list) {
   const snap = {};
@@ -31,8 +43,12 @@ function loadSavedNotifications() {
     const dismissed = JSON.parse(localStorage.getItem(DISMISSED_NOTIFICATIONS_STORAGE_KEY) || '[]');
     dismissedNotificationSources = new Set(Array.isArray(dismissed) ? dismissed : []);
     notifications = saved
-      .map(n => ({ ...n, time: new Date(n.time) }))
-      .filter(n => n.id && n.text && !Number.isNaN(n.time.getTime()));
+      .map(n => ({
+        ...n,
+        color: normalizeNotificationColor(n.color),
+        time: new Date(n.time)
+      }))
+      .filter(n => Number.isFinite(n.id) && n.text && !Number.isNaN(n.time.getTime()));
   } catch {
     notifications = [];
     dismissedNotificationSources = new Set();
@@ -67,15 +83,20 @@ function renderNotifDropdown() {
     return;
   }
 
-  listEl.innerHTML = notifications.map(n => `
+  listEl.innerHTML = notifications.map(n => {
+    const color = normalizeNotificationColor(n.color);
+    const id = Number.isFinite(n.id) ? n.id : null;
+    if (id === null) return '';
+    return `
     <div class="notif-item">
-      <div class="notif-dot ${n.color}"></div>
+      <div class="notif-dot ${color}"></div>
       <div class="notif-body">
-        <div class="notif-text">${n.text}</div>
+        <div class="notif-text">${sanitizeNotificationText(n.text)}</div>
         <div class="notif-time">${n.time.toLocaleString('pt-BR')}</div>
       </div>
-      <button class="notif-delete-btn" onclick="event.stopPropagation(); deleteNotification(${JSON.stringify(n.id)})" title="Apagar notificação">x</button>
-    </div>`).join('');
+      <button class="notif-delete-btn" onclick="event.stopPropagation(); deleteNotification(${id})" title="Apagar notificação">x</button>
+    </div>`;
+  }).join('');
 }
 
 function toggleNotifDropdown() {
