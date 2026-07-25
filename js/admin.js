@@ -40,10 +40,11 @@ let baixaProduto = null;
 let baixaVoltagemSelecionada = null; // 'v110' | 'v220' | null
 
 function showToast(color, text) {
+  const safeColor = normalizeNotificationColor(color);
   const stack = document.getElementById('toast-stack');
   const el = document.createElement('div');
-  el.className = `toast ${color}`;
-  el.innerHTML = `<div class="toast-dot ${color}"></div><div class="toast-text">${text}</div>`;
+  el.className = `toast ${safeColor}`;
+  el.innerHTML = `<div class="toast-dot ${safeColor}"></div><div class="toast-text">${sanitizeNotificationText(text)}</div>`;
   stack.appendChild(el);
   requestAnimationFrame(() => el.classList.add('show'));
   setTimeout(() => {
