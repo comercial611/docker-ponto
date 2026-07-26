@@ -116,7 +116,7 @@ begin
       using errcode = '42501';
   end if;
 
-  if not public.eh_admin() then
+  if public.eh_admin() is not true then
     raise exception 'Somente admin pode alterar o status do produto.'
       using errcode = '42501';
   end if;
@@ -274,7 +274,8 @@ begin
 
   select public.usuario_tipo() into v_tipo;
 
-  if v_tipo not in ('admin', 'vendedor') then
+  if v_tipo is distinct from 'admin'
+     and v_tipo is distinct from 'vendedor' then
     raise exception 'Usuario sem permissao para registrar baixa de venda.';
   end if;
 
@@ -408,7 +409,8 @@ begin
 
   select public.usuario_tipo() into v_tipo;
 
-  if v_tipo not in ('admin', 'vendedor') then
+  if v_tipo is distinct from 'admin'
+     and v_tipo is distinct from 'vendedor' then
     raise exception 'Usuario sem permissao para registrar baixa manual de produto.';
   end if;
 
@@ -550,7 +552,8 @@ begin
 
   select public.usuario_tipo() into v_tipo;
 
-  if v_tipo not in ('admin', 'funcionario') then
+  if v_tipo is distinct from 'admin'
+     and v_tipo is distinct from 'funcionario' then
     raise exception 'Usuário sem permissão para registrar contagem de estoque.';
   end if;
 
@@ -654,7 +657,7 @@ begin
   end if;
 
   select public.usuario_tipo() into v_tipo;
-  if v_tipo <> 'admin' then
+  if v_tipo is distinct from 'admin' then
     raise exception 'Somente admin pode aplicar baixa por CSV.';
   end if;
 
@@ -799,7 +802,7 @@ begin
   if auth.uid() is null then
     raise exception 'Usuario nao autenticado.';
   end if;
-  if not public.eh_admin() then
+  if public.eh_admin() is not true then
     raise exception 'Somente admin pode aplicar fechamento por CSV.';
   end if;
   if p_data_movimento is null then
