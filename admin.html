@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Estoque - Administração</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<link rel="stylesheet" href="css/admin.css?v=20260717-nuvemshop-front-3">
+<link rel="stylesheet" href="css/admin.css?v=20260725-tags-fornecedor-1">
 </head>
 <body>
 
@@ -101,6 +101,14 @@
       <div class="form-section-label">Identificação</div>
       <div class="form-field"><label>Nome do produto *</label><input type="text" id="p-nome" placeholder="Ex: Prensa de Caneca"></div>
       <div class="form-field"><label>Categoria</label><select id="p-categoria"><option value="maquina">Máquina / Prensa</option><option value="produto">Produto</option></select></div>
+      <div class="form-field">
+        <label for="p-tags-input">Tags</label>
+        <div class="tag-input-control" id="p-tags-control">
+          <div class="tag-chip-list" id="p-tags-list" aria-live="polite"></div>
+          <input type="text" id="p-tags-input" placeholder="Digite e pressione Enter ou vírgula" aria-describedby="p-tags-feedback">
+        </div>
+        <div class="tag-input-hint" id="p-tags-feedback">Até 10 tags. Separe por vírgula ou Enter.</div>
+      </div>
       <div id="codes-simple-wrap" class="visible">
         <div class="codes-grid">
           <div class="form-field"><label>Código do Fabricante</label><input type="text" id="p-cod-fab" placeholder="FAB-1234"></div>
@@ -166,6 +174,10 @@
       </div>
 
       <div class="form-field" style="margin-top:14px;"><label>Observações</label><textarea id="p-obs" rows="2" placeholder="Opcional..."></textarea></div>
+
+      <div class="form-section-label">Fornecedor</div>
+      <div class="form-field"><label for="p-fornecedor-status">Situação do fornecedor</label><select id="p-fornecedor-status"><option value="normal">Normal</option><option value="atencao">Atenção</option><option value="em_falta">Em falta</option></select></div>
+      <div class="form-field"><label for="p-fornecedor-obs">Observação do fornecedor</label><textarea id="p-fornecedor-obs" rows="2" placeholder="Obrigatória para atenção ou em falta"></textarea></div>
 
       <div class="form-section-label">Imagem</div>
       <div class="form-field">
@@ -664,8 +676,9 @@
 
 <script src="js/supabase-config.js"></script>
 <script src="js/admin-utils.js?v=20260724-admin-auditoria-1"></script>
+<script src="js/produto-busca.js?v=20260725-tags-fornecedor-1"></script>
 <script src="js/admin-nuvemshop-auditoria.js?v=20260724-admin-auditoria-1"></script>
 <script src="js/admin-notificacoes.js?v=20260725-seguranca-notificacoes-1"></script>
-<script src="js/admin.js?v=20260725-seguranca-notificacoes-1"></script>
+<script src="js/admin.js?v=20260725-tags-fornecedor-2"></script>
 </body>
 </html>

@@ -149,6 +149,27 @@
   .form-field input, .form-field textarea, .form-field select { width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 10px 13px; color: var(--text); font-size: 13px; transition: border-color .15s; font-family: var(--font); }
   .form-field input:focus, .form-field textarea:focus, .form-field select:focus { outline: none; border-color: var(--accent); }
 
+  .tag-input-control { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-height: 42px; padding: 6px 8px; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; }
+  .tag-input-control:focus-within { border-color: var(--accent); }
+  .tag-chip-list, .product-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+  .tag-chip { display: inline-flex; align-items: center; gap: 5px; max-width: 100%; background: rgba(79,110,247,.14); color: var(--accent); border-radius: 4px; padding: 3px 6px 3px 8px; font-size: 11px; font-weight: 600; }
+  .tag-chip > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tag-chip-remove { width: 18px; height: 18px; padding: 0; border: 0; border-radius: 3px; background: transparent; color: inherit; cursor: pointer; font: inherit; font-size: 16px; line-height: 1; }
+  .tag-chip-remove:hover, .tag-chip-remove:focus-visible { background: rgba(79,110,247,.22); }
+  .tag-chip-remove:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .tag-input-control input { flex: 1 1 180px; min-width: 140px; width: auto; padding: 5px 4px; border: 0; background: transparent; }
+  .tag-input-control input:focus { outline: none; }
+  .tag-input-hint { margin-top: 6px; color: var(--muted); font-size: 11px; }
+  .tag-input-hint.error { color: var(--red); }
+
+  .admin-product-meta { display: grid; gap: 5px; margin-top: 5px; }
+  .product-tag { color: var(--accent); background: rgba(79,110,247,.12); border-radius: 4px; padding: 2px 7px; font-size: 10px; font-weight: 600; }
+  .supplier-meta { display: grid; gap: 4px; }
+  .supplier-status { display: inline-flex; width: fit-content; align-items: center; border-radius: 4px; padding: 2px 7px; font-size: 10px; font-weight: 800; text-transform: uppercase; }
+  .supplier-status-atencao { color: var(--yellow); background: rgba(245,158,11,.12); }
+  .supplier-status-em-falta { color: var(--red); background: rgba(239,68,68,.12); }
+  .supplier-observation { color: var(--muted); font-size: 11px; line-height: 1.35; white-space: pre-wrap; }
+
   /* Grid de identificação alinhada: 3 códigos em linha */
   .codes-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; }
   #codes-simple-wrap, #codes-voltage-wrap { display: none; }

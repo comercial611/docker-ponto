@@ -33,6 +33,13 @@ let nuvemshopPilotApplying = false;
 let nuvemshopPilotApplicationLocked = false;
 let nuvemshopPilotWindowBusy = false;
 let nuvemshopPilotWindowTimer = null;
+let productTags = [];
+const PRODUCT_TAG_LIMIT = 10;
+const SUPPLIER_STATUS_CONFIG = Object.freeze({
+  normal: { label: 'Normal', className: 'supplier-status-normal' },
+  atencao: { label: 'Atenção', className: 'supplier-status-atencao' },
+  em_falta: { label: 'Em falta', className: 'supplier-status-em-falta' }
+});
 
 
 // Estado do painel de baixa
@@ -97,6 +104,7 @@ function showApp() {
 }
 
 async function init() {
+  initProductTagsInput();
   loadSavedNotifications();
   setDefaultCsvMovementDate();
   await loadProducts();
@@ -148,6 +156,62 @@ function codesHTML(p) {
   return `<div class="code-tags">${tags.map(t => `<span class="code-tag">${t}</span>`).join('')}</div>`;
 }
 
+function supplierStatusConfig(status) {
+  if (!isValidSupplierStatus(status)) return null;
+  return SUPPLIER_STATUS_CONFIG[status];
+}
+
+function isValidSupplierStatus(status) {
+  return Object.prototype.hasOwnProperty.call(SUPPLIER_STATUS_CONFIG, status);
+}
+
+function createSupplierBadge(product) {
+  const config = supplierStatusConfig(product.fornecedor_status);
+  if (!config || product.fornecedor_status === 'normal') return null;
+
+  const wrapper = document.createElement('div');
+  wrapper.className = 'supplier-meta';
+
+  const badge = document.createElement('span');
+  badge.className = `supplier-status ${config.className}`;
+  badge.textContent = config.label;
+  wrapper.appendChild(badge);
+
+  const observation = String(product.fornecedor_observacao || '').trim();
+  if (observation) {
+    const note = document.createElement('div');
+    note.className = 'supplier-observation';
+    note.textContent = observation;
+    wrapper.appendChild(note);
+  }
+
+  return wrapper;
+}
+
+function renderProductMetadata(tableBody, list) {
+  const productsById = new Map(list.map(product => [String(product.id), product]));
+  tableBody.querySelectorAll('.admin-product-meta').forEach(slot => {
+    const product = productsById.get(slot.dataset.productId);
+    if (!product) return;
+
+    const tags = Array.isArray(product.tags) ? product.tags : [];
+    if (tags.length) {
+      const tagsWrap = document.createElement('div');
+      tagsWrap.className = 'product-tags';
+      tags.forEach(tag => {
+        const chip = document.createElement('span');
+        chip.className = 'product-tag';
+        chip.textContent = tag;
+        tagsWrap.appendChild(chip);
+      });
+      slot.appendChild(tagsWrap);
+    }
+
+    const supplierBadge = createSupplierBadge(product);
+    if (supplierBadge) slot.appendChild(supplierBadge);
+  });
+}
+
 function totalQty(p) { return p.tem_voltagem ? (p.quantidade_110v + p.quantidade_220v) : p.quantidade; }
 
 function getStatus(p) {
@@ -176,17 +240,12 @@ function lastBaixaHTML(p) {
 }
 
 function renderDashTable() {
-  const q = document.getElementById('search-dash').value.toLowerCase();
+  const q = document.getElementById('search-dash').value;
   const statusFilter = document.getElementById('filter-status').value;
   const vendedorFilter = document.getElementById('filter-vendedor').value;
 
   const filtered = products.filter(p => {
-    const matchesSearch =
-      p.nome.toLowerCase().includes(q) ||
-      (p.codigo_fabricante||'').toLowerCase().includes(q) ||
-      (p.codigo_interno||'').toLowerCase().includes(q) ||
-      (p.codigo_referencia||'').toLowerCase().includes(q) ||
-      (p.sku||'').toLowerCase().includes(q);
+    const matchesSearch = productMatchesSearch(p, q);
     const matchesStatus = !statusFilter || getStatus(p).cls === statusFilter;
     const matchesVendedor = !vendedorFilter || p.ultima_baixa_vendedor === vendedorFilter;
     return matchesSearch && matchesStatus && matchesVendedor;
@@ -198,7 +257,7 @@ function renderDashTable() {
     const status = getStatus(p);
     return `<tr id="row-${p.id}">
       <td>${thumbHTML(p)}</td>
-      <td><strong>${p.nome}</strong>${p.observacoes ? `<br><span style="color:var(--muted);font-size:11px">${p.observacoes}</span>` : ''}</td>
+      <td><strong>${p.nome}</strong>${p.observacoes ? `<br><span style="color:var(--muted);font-size:11px">${p.observacoes}</span>` : ''}<div class="admin-product-meta" data-product-id="${p.id}"></div></td>
       <td>${codesHTML(p)}</td>
       <td>${qtyCellHTML(p)}</td>
       <td style="color:var(--muted)">${p.minimo || 0}</td>
@@ -207,18 +266,14 @@ function renderDashTable() {
       <td><button class="btn-baixa" onclick="openBaixaPanel(${p.id})">Baixa</button></td>
     </tr>`;
   }).join('');
+  renderProductMetadata(tbody, filtered);
 }
 
 function renderProdTable() {
-  const q = (document.getElementById('search-prod')?.value || '').toLowerCase();
+  const q = document.getElementById('search-prod')?.value || '';
   const categoryFilter = document.getElementById('filter-prod-categoria')?.value || '';
   const filtered = products.filter(p => {
-    const matchesSearch =
-      p.nome.toLowerCase().includes(q) ||
-      (p.codigo_fabricante||'').toLowerCase().includes(q) ||
-      (p.codigo_interno||'').toLowerCase().includes(q) ||
-      (p.codigo_referencia||'').toLowerCase().includes(q) ||
-      (p.sku||'').toLowerCase().includes(q);
+    const matchesSearch = productMatchesSearch(p, q);
     const matchesCategory = !categoryFilter || (p.categoria || 'maquina') === categoryFilter;
     return matchesSearch && matchesCategory;
   });
@@ -226,7 +281,7 @@ function renderProdTable() {
   if (!filtered.length) { tbody.innerHTML = '<tr><td colspan="7" class="empty-state">Nenhum produto encontrado.</td></tr>'; return; }
   tbody.innerHTML = filtered.map(p => `<tr>
     <td>${thumbHTML(p)}</td>
-    <td><strong>${p.nome}</strong></td>
+    <td><strong>${p.nome}</strong><div class="admin-product-meta" data-product-id="${p.id}"></div></td>
     <td>${categoryHTML(p)}</td>
     <td>${codesHTML(p)}</td>
     <td>${qtyCellHTML(p)}</td>
@@ -237,6 +292,7 @@ function renderProdTable() {
       <button class="btn-delete" onclick="openDeleteModal(${p.id})">Excluir</button>
     </div></td>
   </tr>`).join('');
+  renderProductMetadata(tbody, filtered);
 }
 function updateStats() {
   document.getElementById('stat-total').textContent = products.length;
@@ -279,10 +335,135 @@ function previewImg() {
   else { img.classList.remove('visible'); hint.textContent = 'Cole a URL de uma imagem para visualizar'; }
 }
 
+function normalizeTagLabel(value) {
+  return String(value || '').trim().replace(/\s+/g, ' ');
+}
+
+function normalizeTagKey(value) {
+  return normalizeProductSearch(normalizeTagLabel(value));
+}
+
+function setTagsFeedback(message, isError) {
+  const feedback = document.getElementById('p-tags-feedback');
+  feedback.textContent = message;
+  feedback.classList.toggle('error', !!isError);
+}
+
+function renderProductTagsInput() {
+  const list = document.getElementById('p-tags-list');
+  const input = document.getElementById('p-tags-input');
+  list.replaceChildren();
+
+  productTags.forEach((tag, index) => {
+    const chip = document.createElement('span');
+    chip.className = 'tag-chip';
+
+    const label = document.createElement('span');
+    label.textContent = tag;
+
+    const removeButton = document.createElement('button');
+    removeButton.type = 'button';
+    removeButton.className = 'tag-chip-remove';
+    removeButton.setAttribute('aria-label', `Remover tag ${tag}`);
+    removeButton.textContent = '×';
+    removeButton.addEventListener('click', () => {
+      productTags.splice(index, 1);
+      renderProductTagsInput();
+      input.focus();
+    });
+
+    chip.append(label, removeButton);
+    list.appendChild(chip);
+  });
+}
+
+function addProductTags(value) {
+  const input = document.getElementById('p-tags-input');
+  const candidates = String(value || '').split(',');
+  const existingKeys = new Set(productTags.map(normalizeTagKey));
+  let rejectedHtml = false;
+  let reachedLimit = false;
+
+  candidates.forEach(candidate => {
+    const tag = normalizeTagLabel(candidate);
+    if (!tag) return;
+    if (/[<>]/.test(tag)) {
+      rejectedHtml = true;
+      return;
+    }
+    const key = normalizeTagKey(tag);
+    if (existingKeys.has(key)) return;
+    if (productTags.length >= PRODUCT_TAG_LIMIT) {
+      reachedLimit = true;
+      return;
+    }
+    existingKeys.add(key);
+    productTags.push(tag);
+  });
+
+  input.value = '';
+  renderProductTagsInput();
+  if (rejectedHtml) setTagsFeedback('Tags não podem conter < ou >.', true);
+  else if (reachedLimit) setTagsFeedback('Limite de 10 tags por produto.', true);
+  else setTagsFeedback('Até 10 tags. Separe por vírgula ou Enter.', false);
+}
+
+function setProductTags(tags) {
+  productTags = [];
+  const input = document.getElementById('p-tags-input');
+  if (Array.isArray(tags)) {
+    const existingKeys = new Set();
+    tags.forEach(value => {
+      const tag = normalizeTagLabel(value);
+      const key = normalizeTagKey(tag);
+      if (!tag || /[<>]/.test(tag) || existingKeys.has(key) || productTags.length >= PRODUCT_TAG_LIMIT) return;
+      existingKeys.add(key);
+      productTags.push(tag);
+    });
+  }
+  input.value = '';
+  renderProductTagsInput();
+  setTagsFeedback('Até 10 tags. Separe por vírgula ou Enter.', false);
+}
+
+function initProductTagsInput() {
+  const input = document.getElementById('p-tags-input');
+  if (!input || input.dataset.ready === 'true') return;
+  input.dataset.ready = 'true';
+
+  input.addEventListener('keydown', event => {
+    if (event.key === 'Enter' || event.key === ',') {
+      event.preventDefault();
+      addProductTags(input.value);
+    }
+  });
+  input.addEventListener('blur', () => {
+    if (input.value.trim()) addProductTags(input.value);
+  });
+  input.addEventListener('paste', event => {
+    const pastedText = event.clipboardData?.getData('text') || '';
+    if (!pastedText.includes(',')) return;
+    event.preventDefault();
+    addProductTags(pastedText);
+  });
+  renderProductTagsInput();
+}
+
 async function saveProduct() {
   const nome = document.getElementById('p-nome').value.trim();
   if (!nome) { alert('Nome do produto é obrigatório.'); return; }
   const temVoltagem = document.getElementById('p-tem-voltagem').checked;
+  const fornecedorStatus = document.getElementById('p-fornecedor-status').value;
+  const fornecedorObservacao = document.getElementById('p-fornecedor-obs').value.trim();
+  if (!isValidSupplierStatus(fornecedorStatus)) {
+    alert('Situação do fornecedor inválida.');
+    return;
+  }
+  if (fornecedorStatus !== 'normal' && !fornecedorObservacao) {
+    alert('Informe a observação do fornecedor para atenção ou em falta.');
+    document.getElementById('p-fornecedor-obs').focus();
+    return;
+  }
 
   const legacyCodes = {
     fabricante: inputText('p-cod-fab'),
@@ -306,6 +487,9 @@ async function saveProduct() {
     categoria: document.getElementById('p-categoria').value || 'maquina',
     tem_voltagem: temVoltagem,
     observacoes: document.getElementById('p-obs').value.trim() || null,
+    tags: productTags.slice(),
+    fornecedor_status: fornecedorStatus,
+    fornecedor_observacao: fornecedorStatus === 'normal' ? null : fornecedorObservacao,
     imagem_url: document.getElementById('p-img-url').value.trim() || null
   };
 
@@ -369,6 +553,9 @@ function editProduct(id) {
   document.getElementById('p-cod-ref').value = p.codigo_referencia || '';
   document.getElementById('p-cod-barras').value = p.sku || '';
   document.getElementById('p-obs').value = p.observacoes || '';
+  setProductTags(p.tags);
+  document.getElementById('p-fornecedor-status').value = isValidSupplierStatus(p.fornecedor_status) ? p.fornecedor_status : 'normal';
+  document.getElementById('p-fornecedor-obs').value = p.fornecedor_observacao || '';
   document.getElementById('p-img-url').value = p.imagem_url || '';
 
   const cb = document.getElementById('p-tem-voltagem');
@@ -405,9 +592,11 @@ function clearForm() {
   ['p-nome','p-cod-fab','p-cod-interno','p-cod-ref','p-cod-barras',
     'p-cod-fab-110','p-cod-fab-220','p-cod-interno-110','p-cod-interno-220',
     'p-cod-ref-110','p-cod-ref-220','p-cod-barras-110','p-cod-barras-220',
-    'p-qty','p-min','p-qty-110','p-qty-220','p-min-volt','p-obs','p-img-url','p-edit-id'
+    'p-qty','p-min','p-qty-110','p-qty-220','p-min-volt','p-obs','p-fornecedor-obs','p-img-url','p-edit-id'
   ].forEach(id => document.getElementById(id).value = '');
   document.getElementById('p-categoria').value = 'maquina';
+  document.getElementById('p-fornecedor-status').value = 'normal';
+  setProductTags([]);
   const cb = document.getElementById('p-tem-voltagem');
   cb.checked = false;
   toggleVoltagem({ target: cb });

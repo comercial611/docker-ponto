@@ -139,7 +139,7 @@ function productCodes(product) {
 }
 
 function renderProducts() {
-  const query = document.getElementById('search-input').value.trim().toLowerCase();
+  const query = document.getElementById('search-input').value;
   const listEl = document.getElementById('products-list');
   const machineCount = products.filter(product => productCategory(product) === 'maquina').length;
   const productCount = products.filter(product => productCategory(product) === 'produto').length;
@@ -151,15 +151,7 @@ function renderProducts() {
     const status = getStatus(product);
     const matchesType = productCategory(product) === productTypeFilter;
     const matchesStatus = !statusFilter || status.cls === statusFilter;
-    const haystack = [
-      product.nome,
-      product.codigo_fabricante,
-      product.codigo_interno,
-      product.codigo_referencia,
-      product.sku
-    ].filter(Boolean).join(' ').toLowerCase();
-
-    return matchesType && matchesStatus && haystack.includes(query);
+    return matchesType && matchesStatus && productMatchesSearch(product, query);
   });
 
   if (!filtered.length) {
