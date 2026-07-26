@@ -292,14 +292,9 @@ function codesArray(p) {
 function renderCards() {
   updateFilterCounts();
 
-  const q = document.getElementById('search-input').value.toLowerCase();
+  const q = document.getElementById('search-input').value;
   const filtered = products.filter(p => {
-    const matchesSearch =
-      p.nome.toLowerCase().includes(q) ||
-      (p.codigo_fabricante||'').toLowerCase().includes(q) ||
-      (p.codigo_interno||'').toLowerCase().includes(q) ||
-      (p.codigo_referencia||'').toLowerCase().includes(q) ||
-      (p.sku||'').toLowerCase().includes(q);
+    const matchesSearch = productMatchesSearch(p, q);
     const matchesType = productCategory(p) === productTypeFilter;
     const matchesStatus = !statusFilter || getStatus(p).cls === statusFilter;
     return matchesSearch && matchesType && matchesStatus;
