@@ -31,6 +31,7 @@ Esta pasta documenta a configuracao de seguranca usada no Supabase de producao.
 25. `25-aplicacao-lote-controlada-nuvemshop.sql`
 26. `26-ampliar-lote-nuvemshop-15-itens.sql`
 27. `27-tags-e-fornecedor-produtos.sql`
+28. `28-produto-ativo-inativo.sql`
 
 ## O que foi protegido
 
@@ -73,6 +74,7 @@ Esta pasta documenta a configuracao de seguranca usada no Supabase de producao.
 - `25-aplicacao-lote-controlada-nuvemshop.sql`: cria a aplicacao protegida em lote, posteriormente ampliada e validada para dois a dez itens; reserva todos atomicamente, registra cada resultado e interrompe os itens restantes diante de qualquer falha ou incerteza.
 - `26-ampliar-lote-nuvemshop-15-itens.sql`: amplia de dez para quinze itens o limite do lote controlado, mantendo as mesmas validacoes, reserva atomica, janela temporaria e interrupcao diante de falha ou incerteza.
 - `27-tags-e-fornecedor-produtos.sql`: adiciona tags pesquisaveis e a situacao do fornecedor ao cadastro de produtos. Aplicar somente pelo fluxo de migrations ja usado no projeto; nao executar diretamente pelo navegador.
+- `28-produto-ativo-inativo.sql`: adiciona o estado ativo/inativo, auditoria administrativa e bloqueios locais de estoque, CSV e vinculos Nuvemshop. Deve ser aplicada antes das futuras interfaces de inativacao, somente pelo fluxo de migrations do projeto.
 - `functions/nuvemshop-oauth`: conclui a instalacao OAuth e salva o token criptografado, sem exibir a credencial.
 - `functions/nuvemshop-lgpd`: recebe os tres webhooks obrigatorios de privacidade e valida a assinatura da Nuvemshop.
 - `functions/nuvemshop-catalogo`: consulta o catalogo e os locais de estoque da Nuvemshop somente para administradores, sem alterar o estoque externo.
