@@ -34,11 +34,22 @@ let nuvemshopPilotApplicationLocked = false;
 let nuvemshopPilotWindowBusy = false;
 let nuvemshopPilotWindowTimer = null;
 let productTags = [];
+let productStatusTarget = null;
+let productStatusBusy = false;
+let productStatusPreviousFocus = null;
 const PRODUCT_TAG_LIMIT = 10;
 const SUPPLIER_STATUS_CONFIG = Object.freeze({
   normal: { label: 'Normal', className: 'supplier-status-normal' },
   atencao: { label: 'Atenção', className: 'supplier-status-atencao' },
   em_falta: { label: 'Em falta', className: 'supplier-status-em-falta' }
+});
+const PRODUCT_ACTIVE_STATUS_CONFIG = Object.freeze({
+  active: Object.freeze({ label: 'Ativo', className: 'product-status-active' }),
+  inactive: Object.freeze({ label: 'Inativo', className: 'product-status-inactive' })
+});
+const PRODUCT_STATUS_FOCUS_TARGETS = Object.freeze({
+  dashboard: 'filter-product-active-dash',
+  products: 'filter-product-active-products'
 });
 
 
@@ -116,8 +127,9 @@ async function init() {
 }
 
 // ─── PRODUTOS ────────────────────────────────────────────
-async function loadProducts() {
-  const { data } = await sb.from('produtos').select('*').order('nome');
+async function loadProducts({ throwOnError = false } = {}) {
+  const { data, error } = await sb.from('produtos').select('*').order('nome');
+  if (error && throwOnError) throw error;
   const newList = data || [];
 
   if (Object.keys(productsSnapshot).length > 0) {
@@ -130,12 +142,14 @@ async function loadProducts() {
   renderDashTable();
   renderProdTable();
   updateStats();
+  return { data: newList, error: error || null };
 }
 
 function thumbHTML(p, size) {
   size = size || 44;
+  const safeName = escapeHtml(p.nome || '');
   if (p.imagem_url) {
-    return `<img class="prod-thumb" style="width:${size}px;height:${size}px" src="${p.imagem_url}" alt="${p.nome}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+    return `<img class="prod-thumb" style="width:${size}px;height:${size}px" src="${p.imagem_url}" alt="${safeName}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
             <div class="prod-thumb-placeholder" style="width:${size}px;height:${size}px;display:none">📦</div>`;
   }
   return `<div class="prod-thumb-placeholder" style="width:${size}px;height:${size}px">📦</div>`;
@@ -214,6 +228,22 @@ function renderProductMetadata(tableBody, list) {
 
 function totalQty(p) { return p.tem_voltagem ? (p.quantidade_110v + p.quantidade_220v) : p.quantidade; }
 
+function isProductActive(product) {
+  return product?.ativo === true;
+}
+
+function productMatchesActiveFilter(product, filter) {
+  if (filter === 'inactive') return !isProductActive(product);
+  if (filter === 'all') return true;
+  return isProductActive(product);
+}
+
+function productActiveStatusHTML(product) {
+  const key = isProductActive(product) ? 'active' : 'inactive';
+  const config = PRODUCT_ACTIVE_STATUS_CONFIG[key];
+  return `<span class="product-status-badge ${config.className}">${config.label}</span>`;
+}
+
 function getStatus(p) {
   const qty = totalQty(p);
   if (qty === 0) return { cls: 'out', label: 'Sem estoque' };
@@ -243,27 +273,32 @@ function renderDashTable() {
   const q = document.getElementById('search-dash').value;
   const statusFilter = document.getElementById('filter-status').value;
   const vendedorFilter = document.getElementById('filter-vendedor').value;
+  const activeFilter = document.getElementById('filter-product-active-dash').value;
 
   const filtered = products.filter(p => {
     const matchesSearch = productMatchesSearch(p, q);
     const matchesStatus = !statusFilter || getStatus(p).cls === statusFilter;
     const matchesVendedor = !vendedorFilter || p.ultima_baixa_vendedor === vendedorFilter;
-    return matchesSearch && matchesStatus && matchesVendedor;
+    const matchesActive = productMatchesActiveFilter(p, activeFilter);
+    return matchesSearch && matchesStatus && matchesVendedor && matchesActive;
   });
 
   const tbody = document.getElementById('dash-tbody');
-  if (!filtered.length) { tbody.innerHTML = '<tr><td colspan="8" class="empty-state">Nenhum produto encontrado.</td></tr>'; return; }
+  if (!filtered.length) { tbody.innerHTML = '<tr><td colspan="9" class="empty-state">Nenhum produto encontrado.</td></tr>'; return; }
   tbody.innerHTML = filtered.map(p => {
     const status = getStatus(p);
-    return `<tr id="row-${p.id}">
+    const active = isProductActive(p);
+    const safeName = escapeHtml(p.nome || 'Produto');
+    return `<tr id="row-${p.id}" class="${active ? '' : 'product-row-inactive'}">
       <td>${thumbHTML(p)}</td>
-      <td><strong>${p.nome}</strong>${p.observacoes ? `<br><span style="color:var(--muted);font-size:11px">${p.observacoes}</span>` : ''}<div class="admin-product-meta" data-product-id="${p.id}"></div></td>
+      <td><strong>${safeName}</strong>${p.observacoes ? `<br><span style="color:var(--muted);font-size:11px">${p.observacoes}</span>` : ''}<div class="admin-product-meta" data-product-id="${p.id}"></div></td>
+      <td>${productActiveStatusHTML(p)}</td>
       <td>${codesHTML(p)}</td>
       <td>${qtyCellHTML(p)}</td>
       <td style="color:var(--muted)">${p.minimo || 0}</td>
       <td><span class="badge ${status.cls}">${status.label}</span></td>
       <td>${lastBaixaHTML(p)}</td>
-      <td><button class="btn-baixa" onclick="openBaixaPanel(${p.id})">Baixa</button></td>
+      <td>${active ? `<button class="btn-baixa" onclick="openBaixaPanel(${p.id})">Baixa</button>` : '<button class="btn-baixa" disabled title="Produto inativo">Baixa</button>'}</td>
     </tr>`;
   }).join('');
   renderProductMetadata(tbody, filtered);
@@ -272,33 +307,43 @@ function renderDashTable() {
 function renderProdTable() {
   const q = document.getElementById('search-prod')?.value || '';
   const categoryFilter = document.getElementById('filter-prod-categoria')?.value || '';
+  const activeFilter = document.getElementById('filter-product-active-products')?.value || 'all';
   const filtered = products.filter(p => {
     const matchesSearch = productMatchesSearch(p, q);
     const matchesCategory = !categoryFilter || (p.categoria || 'maquina') === categoryFilter;
-    return matchesSearch && matchesCategory;
+    const matchesActive = productMatchesActiveFilter(p, activeFilter);
+    return matchesSearch && matchesCategory && matchesActive;
   });
   const tbody = document.getElementById('prod-tbody');
-  if (!filtered.length) { tbody.innerHTML = '<tr><td colspan="7" class="empty-state">Nenhum produto encontrado.</td></tr>'; return; }
-  tbody.innerHTML = filtered.map(p => `<tr>
+  if (!filtered.length) { tbody.innerHTML = '<tr><td colspan="8" class="empty-state">Nenhum produto encontrado.</td></tr>'; return; }
+  tbody.innerHTML = filtered.map(p => {
+    const active = isProductActive(p);
+    const safeName = escapeHtml(p.nome || 'Produto');
+    return `<tr class="${active ? '' : 'product-row-inactive'}">
     <td>${thumbHTML(p)}</td>
-    <td><strong>${p.nome}</strong><div class="admin-product-meta" data-product-id="${p.id}"></div></td>
+    <td><strong>${safeName}</strong><div class="admin-product-meta" data-product-id="${p.id}"></div></td>
     <td>${categoryHTML(p)}</td>
+    <td>${productActiveStatusHTML(p)}</td>
     <td>${codesHTML(p)}</td>
     <td>${qtyCellHTML(p)}</td>
     <td>${p.minimo || 0}</td>
     <td><div class="action-cell">
-      <button class="btn-baixa" onclick="openBaixaPanel(${p.id})">Baixa</button>
+      ${active ? `<button class="btn-baixa" onclick="openBaixaPanel(${p.id})">Baixa</button>` : '<button class="btn-baixa" disabled title="Produto inativo">Baixa</button>'}
+      <button class="btn-product-status ${active ? 'deactivate' : 'reactivate'}" onclick="openProductStatusModal(${p.id}, ${!active}, 'products')">${active ? 'Inativar' : 'Reativar'}</button>
       <button class="btn-edit" onclick="editProduct(${p.id})">Editar</button>
       <button class="btn-delete" onclick="openDeleteModal(${p.id})">Excluir</button>
     </div></td>
-  </tr>`).join('');
+  </tr>`;
+  }).join('');
   renderProductMetadata(tbody, filtered);
 }
 function updateStats() {
-  document.getElementById('stat-total').textContent = products.length;
-  document.getElementById('stat-ok').textContent = products.filter(p => getStatus(p).cls === 'ok').length;
-  document.getElementById('stat-low').textContent = products.filter(p => getStatus(p).cls === 'low').length;
-  document.getElementById('stat-out').textContent = products.filter(p => getStatus(p).cls === 'out').length;
+  const activeProducts = products.filter(isProductActive);
+  document.getElementById('stat-total').textContent = activeProducts.length;
+  document.getElementById('stat-ok').textContent = activeProducts.filter(p => getStatus(p).cls === 'ok').length;
+  document.getElementById('stat-low').textContent = activeProducts.filter(p => getStatus(p).cls === 'low').length;
+  document.getElementById('stat-out').textContent = activeProducts.filter(p => getStatus(p).cls === 'out').length;
+  document.getElementById('stat-inactive').textContent = products.length - activeProducts.length;
 }
 
 function toggleVoltagem(e) {
@@ -610,6 +655,155 @@ function showSuccess(msg) {
   el.textContent = msg;
   setTimeout(() => el.textContent = '', 3000);
 }
+
+function openProductStatusModal(id, targetActive, origin) {
+  const productId = id;
+  const validOrigin = Object.prototype.hasOwnProperty.call(PRODUCT_STATUS_FOCUS_TARGETS, origin);
+  if (!Number.isInteger(productId) || productId <= 0 || typeof targetActive !== 'boolean' || !validOrigin) return;
+
+  const product = products.find(item => Number(item.id) === productId);
+  if (!product || isProductActive(product) === targetActive) return;
+
+  productStatusTarget = { productId, targetActive, origin };
+  const modal = document.getElementById('product-status-modal');
+  const reasonWrap = document.getElementById('product-status-reason-wrap');
+  const reason = document.getElementById('product-status-reason');
+  const confirmButton = document.getElementById('product-status-confirm');
+
+  productStatusPreviousFocus = document.activeElement;
+  document.getElementById('product-status-name').textContent = product.nome || 'Produto';
+  document.getElementById('product-status-destination').textContent = targetActive ? 'reativar' : 'inativar';
+  document.getElementById('product-status-error').textContent = '';
+  reason.value = '';
+  reasonWrap.hidden = targetActive;
+  reason.required = !targetActive;
+  reason.setAttribute('aria-required', String(!targetActive));
+  confirmButton.textContent = targetActive ? 'Reativar produto' : 'Inativar produto';
+  confirmButton.classList.toggle('product-status-confirm-reactivate', targetActive);
+  confirmButton.classList.toggle('product-status-confirm-deactivate', !targetActive);
+  modal.classList.add('open');
+
+  requestAnimationFrame(() => {
+    (targetActive ? confirmButton : reason).focus();
+  });
+}
+
+function closeProductStatusModal(restorePreviousFocus = true) {
+  if (productStatusBusy) return;
+  document.getElementById('product-status-modal').classList.remove('open');
+  document.getElementById('product-status-error').textContent = '';
+  document.getElementById('product-status-reason').value = '';
+  productStatusTarget = null;
+  if (restorePreviousFocus && productStatusPreviousFocus instanceof HTMLElement && productStatusPreviousFocus.isConnected) {
+    productStatusPreviousFocus.focus();
+  }
+  productStatusPreviousFocus = null;
+}
+
+function focusProductStatusOrigin(origin) {
+  if (!Object.prototype.hasOwnProperty.call(PRODUCT_STATUS_FOCUS_TARGETS, origin)) return;
+  document.getElementById(PRODUCT_STATUS_FOCUS_TARGETS[origin])?.focus();
+}
+
+function getProductStatusModalFocusableElements() {
+  const modal = document.querySelector('#product-status-modal .product-status-modal');
+  if (!modal) return [];
+  return Array.from(modal.querySelectorAll('button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'))
+    .filter(element => element.offsetParent !== null);
+}
+
+async function confirmProductStatusChange() {
+  if (productStatusBusy || !productStatusTarget) return;
+
+  const { productId, targetActive, origin } = productStatusTarget;
+  const errorElement = document.getElementById('product-status-error');
+  const confirmButton = document.getElementById('product-status-confirm');
+  const cancelButton = document.getElementById('product-status-cancel');
+  const motivo = document.getElementById('product-status-reason').value.trim();
+
+  if (
+    !Number.isInteger(productId) ||
+    productId <= 0 ||
+    typeof targetActive !== 'boolean' ||
+    !Object.prototype.hasOwnProperty.call(PRODUCT_STATUS_FOCUS_TARGETS, origin)
+  ) {
+    errorElement.textContent = 'Não foi possível validar o produto selecionado.';
+    return;
+  }
+  if (!targetActive && !motivo) {
+    errorElement.textContent = 'Informe o motivo da inativação.';
+    document.getElementById('product-status-reason').focus();
+    return;
+  }
+
+  productStatusBusy = true;
+  confirmButton.disabled = true;
+  cancelButton.disabled = true;
+  errorElement.textContent = '';
+
+  let rpcData;
+  let statusProcessed = false;
+  try {
+    const { data, error } = await sb.rpc('alterar_status_produto', {
+      p_produto_id: productId,
+      p_ativo: targetActive,
+      p_motivo: targetActive ? null : motivo
+    });
+
+    if (error) {
+      errorElement.textContent = error.message || 'Não foi possível alterar o status do produto.';
+      return;
+    }
+
+    rpcData = data;
+    statusProcessed = true;
+    await loadProducts({ throwOnError: true });
+  } catch (error) {
+    errorElement.textContent = statusProcessed
+      ? 'O status foi processado, mas não foi possível atualizar a lista. Verifique a conexão e tente recarregar.'
+      : (error?.message || 'Não foi possível alterar o status do produto.');
+    return;
+  } finally {
+    productStatusBusy = false;
+    confirmButton.disabled = false;
+    cancelButton.disabled = false;
+  }
+
+  const destination = targetActive ? 'reativado' : 'inativado';
+  closeProductStatusModal(false);
+  focusProductStatusOrigin(origin);
+  showToast(rpcData === false ? 'blue' : 'green', rpcData === false
+    ? `O produto já estava ${destination}.`
+    : `Produto ${destination} com sucesso.`);
+}
+
+document.addEventListener('keydown', event => {
+  const modal = document.getElementById('product-status-modal');
+  if (!modal?.classList.contains('open')) return;
+
+  if (event.key === 'Escape') {
+    if (!productStatusBusy) closeProductStatusModal();
+    return;
+  }
+
+  if (event.key === 'Tab') {
+    const focusableElements = getProductStatusModalFocusableElements();
+    if (!focusableElements.length) {
+      event.preventDefault();
+      return;
+    }
+
+    const first = focusableElements[0];
+    const last = focusableElements[focusableElements.length - 1];
+    if (event.shiftKey && (document.activeElement === first || !modal.contains(document.activeElement))) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && (document.activeElement === last || !modal.contains(document.activeElement))) {
+      event.preventDefault();
+      first.focus();
+    }
+  }
+});
 
 function openDeleteModal(id) { deleteTargetId = id; document.getElementById('delete-modal').classList.add('open'); }
 function closeDeleteModal() { deleteTargetId = null; document.getElementById('delete-modal').classList.remove('open'); }
@@ -2592,6 +2786,11 @@ async function confirmResetSenha() {
 function openBaixaPanel(id) {
   const p = products.find(x => x.id === id);
   if (!p) return;
+  if (!isProductActive(p)) {
+    showToast('red', 'Produto inativo não pode receber baixa.');
+    return;
+  }
+  const safeProductName = escapeHtml(p.nome || 'Produto');
   baixaProduto = p;
   baixaVoltagemSelecionada = null;
 
@@ -2600,7 +2799,7 @@ function openBaixaPanel(id) {
       ? `<img class="baixa-prod-img" src="${p.imagem_url}" onerror="this.outerHTML='<div class=baixa-prod-img-ph>📦</div>'">`
       : `<div class="baixa-prod-img-ph">📦</div>`}
     <div>
-      <div class="baixa-prod-name">${p.nome}</div>
+      <div class="baixa-prod-name">${safeProductName}</div>
       <div class="baixa-prod-qty">${p.tem_voltagem ? `110V: ${p.quantidade_110v} · 220V: ${p.quantidade_220v}` : `Estoque atual: ${p.quantidade}`}</div>
     </div>`;
 

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Estoque - Administração</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<link rel="stylesheet" href="css/admin.css?v=20260725-tags-fornecedor-1">
+<link rel="stylesheet" href="css/admin.css?v=20260728-produto-status-2">
 </head>
 <body>
 
@@ -63,14 +63,20 @@
   <!-- DASHBOARD -->
   <div class="tab-content active" id="tab-dashboard">
     <div class="stats-grid">
-      <div class="stat-card"><div class="stat-label">Total de produtos</div><div class="stat-value" id="stat-total">—</div></div>
+      <div class="stat-card"><div class="stat-label">Produtos ativos</div><div class="stat-value" id="stat-total">—</div></div>
       <div class="stat-card"><div class="stat-label">Em estoque</div><div class="stat-value green" id="stat-ok">—</div></div>
       <div class="stat-card"><div class="stat-label">Estoque baixo</div><div class="stat-value yellow" id="stat-low">—</div></div>
       <div class="stat-card"><div class="stat-label">Sem estoque</div><div class="stat-value red" id="stat-out">—</div></div>
+      <div class="stat-card stat-card-inactive"><div class="stat-label">Produtos inativos</div><div class="stat-value" id="stat-inactive">—</div></div>
     </div>
     <div class="section-header">
-      <div class="section-title">Todos os produtos</div>
+      <div class="section-title">Produtos</div>
       <div class="filters-row">
+        <select class="filter-select" id="filter-product-active-dash" onchange="renderDashTable()">
+          <option value="active" selected>Ativos</option>
+          <option value="all">Todos</option>
+          <option value="inactive">Inativos</option>
+        </select>
         <select class="filter-select" id="filter-status" onchange="renderDashTable()">
           <option value="">Todos os status</option>
           <option value="ok">Em estoque</option>
@@ -85,7 +91,7 @@
     </div>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Foto</th><th>Produto</th><th>Códigos</th><th>Qtd. atual</th><th>Mín.</th><th>Status</th><th>Última baixa</th><th>Ações</th></tr></thead>
+        <thead><tr><th>Foto</th><th>Produto</th><th>Cadastro</th><th>Códigos</th><th>Qtd. atual</th><th>Mín.</th><th>Status</th><th>Última baixa</th><th>Ações</th></tr></thead>
         <tbody id="dash-tbody"></tbody>
       </table>
     </div>
@@ -237,12 +243,13 @@
     <div style="margin-top:28px;">
       <div class="section-header">
         <div class="section-title">Produtos cadastrados</div>
+        <select class="filter-select" id="filter-product-active-products" onchange="renderProdTable()"><option value="all" selected>Todos</option><option value="active">Ativos</option><option value="inactive">Inativos</option></select>
         <select class="filter-select" id="filter-prod-categoria" onchange="renderProdTable()"><option value="">Todas as categorias</option><option value="maquina">Máquinas / Prensas</option><option value="produto">Produtos</option></select>
         <input class="search-input" id="search-prod" placeholder="Buscar produto..." oninput="renderProdTable()">
       </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Foto</th><th>Produto</th><th>Categoria</th><th>Códigos</th><th>Qtd.</th><th>Mín.</th><th>Ações</th></tr></thead>
+          <thead><tr><th>Foto</th><th>Produto</th><th>Categoria</th><th>Cadastro</th><th>Códigos</th><th>Qtd.</th><th>Mín.</th><th>Ações</th></tr></thead>
           <tbody id="prod-tbody"></tbody>
         </table>
       </div>
@@ -564,6 +571,23 @@
   </div>
 </div>
 
+<!-- MODAL STATUS DO PRODUTO -->
+<div class="modal-overlay" id="product-status-modal" role="dialog" aria-modal="true" aria-labelledby="product-status-modal-title" aria-describedby="product-status-description" onclick="if (event.target === this) closeProductStatusModal()">
+  <div class="modal product-status-modal">
+    <div class="modal-title" id="product-status-modal-title">Alterar status do produto</div>
+    <p class="product-status-confirmation" id="product-status-description">Você está prestes a <strong id="product-status-destination"></strong> <span id="product-status-name"></span>.</p>
+    <div class="form-field" id="product-status-reason-wrap">
+      <label for="product-status-reason">Motivo da inativação *</label>
+      <textarea id="product-status-reason" rows="3" maxlength="500" placeholder="Informe o motivo da inativação"></textarea>
+    </div>
+    <div class="product-status-error" id="product-status-error" role="alert"></div>
+    <div class="product-status-actions">
+      <button class="btn-save" id="product-status-confirm" onclick="confirmProductStatusChange()">Confirmar</button>
+      <button class="btn-cancel" id="product-status-cancel" onclick="closeProductStatusModal()">Cancelar</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL EXCLUIR -->
 <div class="modal-overlay" id="delete-modal">
   <div class="modal">
@@ -679,6 +703,6 @@
 <script src="js/produto-busca.js?v=20260725-tags-fornecedor-1"></script>
 <script src="js/admin-nuvemshop-auditoria.js?v=20260724-admin-auditoria-1"></script>
 <script src="js/admin-notificacoes.js?v=20260725-seguranca-notificacoes-1"></script>
-<script src="js/admin.js?v=20260725-tags-fornecedor-2"></script>
+<script src="js/admin.js?v=20260728-produto-status-3"></script>
 </body>
 </html>

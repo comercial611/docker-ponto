@@ -145,7 +145,7 @@ function setViewMode(mode) {
 }
 
 async function loadProducts() {
-  const { data } = await sb.from('produtos').select('*').order('nome');
+  const { data } = await sb.from('produtos').select('*').eq('ativo', true).order('nome');
   products = data || [];
   syncOpenBaixaProduct();
   renderCards();
