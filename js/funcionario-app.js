@@ -63,6 +63,7 @@ async function loadProducts() {
   const { data, error } = await sb
     .from('produtos')
     .select('*')
+    .eq('ativo', true)
     .order('nome');
 
   if (error) {

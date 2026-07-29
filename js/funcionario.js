@@ -50,7 +50,7 @@ async function loadProducts(options = {}) {
     Object.entries(newQtysVolt).map(([id, value]) => [id, { ...value }])
   );
 
-  const { data } = await sb.from('produtos').select('*').order('nome');
+  const { data } = await sb.from('produtos').select('*').eq('ativo', true).order('nome');
   products = data || [];
   newQtys = {};
   newQtysVolt = {};
