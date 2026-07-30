@@ -2,6 +2,11 @@ let products = [];
 let historyRows = [];
 let csvLots = [];
 let attentionLists = {};
+let sessionGeneration = 0;
+let loadGeneration = 0;
+let hasProductsData = false;
+let hasHistoryData = false;
+let hasCsvLotsData = false;
 
 async function checkSession() {
   const { data: { session } } = await sb.auth.getSession();
@@ -10,6 +15,7 @@ async function checkSession() {
 
 sb.auth.onAuthStateChange((event) => {
   if (event === 'SIGNED_OUT') {
+    invalidateDataSession();
     document.getElementById('app-screen').style.display = 'none';
     document.getElementById('login-screen').style.display = 'flex';
   }
@@ -30,11 +36,15 @@ async function doLogin() {
 }
 
 async function doLogout() {
+  invalidateDataSession();
   await sb.auth.signOut();
 }
 
 async function enterReportsArea() {
+  const currentSessionGeneration = sessionGeneration;
   const { data: tipo, error } = await sb.rpc('usuario_tipo');
+  if (currentSessionGeneration !== sessionGeneration) return false;
+
   if (error || tipo !== 'admin') {
     await sb.auth.signOut();
     document.getElementById('login-error').textContent = 'Acesso permitido apenas para administradores.';
@@ -52,26 +62,106 @@ function showApp() {
 }
 
 async function loadData() {
-  setLoadingState();
+  const currentSessionGeneration = sessionGeneration;
+  const currentLoadGeneration = ++loadGeneration;
+  const hadValidData = hasProductsData || hasHistoryData || hasCsvLotsData;
 
-  const [productsRes, historyRes, csvRes] = await Promise.all([
-    sb.from('produtos').select('*').order('nome'),
-    sb.from('historico').select('*, produtos(id,nome,imagem_url,categoria)').order('created_at', { ascending: false }).limit(500),
-    sb.from('baixas_csv_lotes').select('*, baixas_csv_itens(*)').order('created_at', { ascending: false }).limit(12)
-  ]);
+  setRefreshButtonLoading(true);
+  if (!hadValidData) setLoadingState();
 
-  products = productsRes.data || [];
-  historyRows = historyRes.data || [];
-  csvLots = csvRes.data || [];
+  try {
+    const results = await Promise.allSettled([
+      sb.from('produtos').select('*').order('nome'),
+      sb.from('historico').select('*, produtos(id,nome,imagem_url,categoria)').order('created_at', { ascending: false }).limit(500),
+      sb.from('baixas_csv_lotes').select('*, baixas_csv_itens(*)').order('created_at', { ascending: false }).limit(12)
+    ]);
 
-  if (productsRes.error) showLoadError(productsRes.error.message);
-  if (historyRes.error) historyRows = [];
-  if (csvRes.error) csvLots = [];
+    if (!isCurrentLoad(currentSessionGeneration, currentLoadGeneration)) return;
 
-  renderAll();
+    const errors = [];
+    let updatedAnyData = false;
+    let productsUpdated = false;
+    const [productsResult, historyResult, csvResult] = results;
+
+    if (isSuccessfulResult(productsResult)) {
+      products = productsResult.value.data || [];
+      hasProductsData = true;
+      updatedAnyData = true;
+      productsUpdated = true;
+    } else {
+      errors.push('produtos');
+    }
+
+    if (isSuccessfulResult(historyResult)) {
+      historyRows = historyResult.value.data || [];
+      hasHistoryData = true;
+      updatedAnyData = true;
+    } else {
+      errors.push('histórico');
+    }
+
+    if (isSuccessfulResult(csvResult)) {
+      csvLots = csvResult.value.data || [];
+      hasCsvLotsData = true;
+      updatedAnyData = true;
+    } else {
+      errors.push('lotes CSV');
+    }
+
+    if (updatedAnyData) {
+      renderAvailableData();
+      if (productsUpdated) closeAttentionModal();
+    } else if (!hadValidData) {
+      renderAvailableData();
+    }
+
+    if (errors.length) showLoadWarning(errors, hadValidData);
+    else clearLoadWarning();
+  } catch (error) {
+    if (!isCurrentLoad(currentSessionGeneration, currentLoadGeneration)) return;
+    renderAvailableData();
+    showLoadWarning(['produtos', 'histórico', 'lotes CSV'], hadValidData);
+  } finally {
+    if (isCurrentLoad(currentSessionGeneration, currentLoadGeneration)) {
+      setRefreshButtonLoading(false);
+    }
+  }
+}
+
+function invalidateDataSession() {
+  sessionGeneration += 1;
+  loadGeneration += 1;
+  products = [];
+  historyRows = [];
+  csvLots = [];
+  attentionLists = {};
+  hasProductsData = false;
+  hasHistoryData = false;
+  hasCsvLotsData = false;
+  clearLoadWarning();
+  resetProductStatusNotes();
+  closeAttentionModal();
+  setRefreshButtonLoading(false);
+}
+
+function isCurrentLoad(currentSessionGeneration, currentLoadGeneration) {
+  return currentSessionGeneration === sessionGeneration
+    && currentLoadGeneration === loadGeneration;
+}
+
+function isSuccessfulResult(result) {
+  return result.status === 'fulfilled' && !result.value.error;
+}
+
+function setRefreshButtonLoading(loading) {
+  const button = document.getElementById('report-refresh-button');
+  button.disabled = loading;
+  button.setAttribute('aria-busy', String(loading));
+  button.textContent = loading ? 'Atualizando...' : 'Atualizar';
 }
 
 function setLoadingState() {
+  resetProductStatusNotes();
   ['stat-produtos', 'stat-maquinas', 'stat-baixo', 'stat-zerado', 'stat-csv'].forEach(id => {
     document.getElementById(id).textContent = '-';
   });
@@ -88,17 +178,127 @@ function setLoadingState() {
   document.getElementById('machine-attention-grid').innerHTML = '';
 }
 
+function resetProductStatusNotes() {
+  ['products-inactive-note', 'machines-inactive-note'].forEach(id => {
+    document.getElementById(id).textContent = '';
+  });
+  ['products-status-warning', 'machines-status-warning'].forEach(id => {
+    const element = document.getElementById(id);
+    element.textContent = '';
+    element.hidden = true;
+  });
+}
+
 function showLoadError(message) {
   document.getElementById('purchase-tbody').innerHTML = `<tr><td colspan="6" class="empty-state">${escapeHtml(message)}</td></tr>`;
 }
 
-function renderAll() {
-  renderStats();
-  renderPurchaseSuggestions();
-  renderTopProducts();
-  renderCsvLots();
-  renderAttention();
-  renderMachineReport();
+function showLoadWarning(errors, hadValidData) {
+  const element = document.getElementById('report-load-status');
+  const sources = errors.join(', ');
+  element.textContent = hadValidData
+    ? `Não foi possível atualizar: ${sources}. Os dados válidos disponíveis foram preservados.`
+    : `Não foi possível carregar: ${sources}. Alguns dados estão indisponíveis.`;
+  element.hidden = false;
+}
+
+function clearLoadWarning() {
+  const element = document.getElementById('report-load-status');
+  element.textContent = '';
+  element.hidden = true;
+}
+
+function renderAvailableData() {
+  let activeProducts = null;
+
+  if (hasProductsData) {
+    const productGroups = splitProductsByStatus(products);
+    activeProducts = productGroups.active;
+    renderProductStatusNotes(productGroups);
+    renderStats(activeProducts);
+    renderPurchaseSuggestions(activeProducts);
+  } else {
+    setProductInventoryUnavailable();
+  }
+
+  if (hasCsvLotsData) {
+    renderCsvSummary();
+    renderCsvLots();
+  } else {
+    setCsvUnavailable();
+  }
+
+  if (activeProducts && hasHistoryData && hasCsvLotsData) {
+    renderTopProducts(activeProducts);
+  } else {
+    setElementUnavailable('top-products-list');
+  }
+
+  renderAttention(activeProducts, hasCsvLotsData);
+
+  if (activeProducts) {
+    renderMachineReport(activeProducts, hasHistoryData);
+  } else {
+    setMachineReportUnavailable(hasHistoryData);
+  }
+}
+
+function setProductInventoryUnavailable() {
+  resetProductStatusNotes();
+  ['stat-produtos', 'stat-maquinas', 'stat-baixo', 'stat-zerado'].forEach(id => {
+    document.getElementById(id).textContent = '-';
+  });
+  document.getElementById('purchase-count').textContent = 'Dados indisponíveis';
+  setTableUnavailable('purchase-tbody', 6);
+}
+
+function setCsvUnavailable() {
+  document.getElementById('stat-csv').textContent = '-';
+  setElementUnavailable('csv-lots-list');
+}
+
+function setMachineReportUnavailable(historyAvailable) {
+  ['machine-stat-total', 'machine-stat-units', 'machine-stat-low', 'machine-stat-out', 'machine-stat-sales'].forEach(id => {
+    document.getElementById(id).textContent = '-';
+  });
+  document.getElementById('machine-purchase-count').textContent = 'Dados indisponíveis';
+  setTableUnavailable('machine-purchase-tbody', 8);
+  setElementUnavailable('top-machines-list');
+  setElementUnavailable('machine-sales-list');
+  renderMachineAttention(null, null, historyAvailable);
+}
+
+function setElementUnavailable(id) {
+  const element = document.getElementById(id);
+  element.replaceChildren(createUnavailableMessage());
+}
+
+function setTableUnavailable(id, colspan) {
+  const tbody = document.getElementById(id);
+  const row = document.createElement('tr');
+  const cell = document.createElement('td');
+  cell.className = 'empty-state';
+  cell.colSpan = colspan;
+  cell.textContent = 'Dados indisponíveis';
+  row.appendChild(cell);
+  tbody.replaceChildren(row);
+}
+
+function createUnavailableMessage(text = 'Dados indisponíveis') {
+  const message = document.createElement('div');
+  message.className = 'empty-state';
+  message.textContent = text;
+  return message;
+}
+
+function appendUnavailableCard(element, text, prepend = false) {
+  const card = document.createElement('div');
+  card.className = 'attention-card unavailable';
+  const message = document.createElement('p');
+  message.textContent = text;
+  card.appendChild(message);
+  if (prepend) element.prepend(card);
+  else element.appendChild(card);
 }
 
 function switchReportTab(tab) {
@@ -110,6 +310,45 @@ function switchReportTab(tab) {
 
 function productCategory(product) {
   return product.categoria || 'maquina';
+}
+
+function splitProductsByStatus(items) {
+  return items.reduce((groups, product) => {
+    if (product.ativo === true) groups.active.push(product);
+    else if (product.ativo === false) groups.inactive.push(product);
+    else groups.inconsistent.push(product);
+    return groups;
+  }, { active: [], inactive: [], inconsistent: [] });
+}
+
+function renderProductStatusNotes(groups) {
+  const inactiveProducts = groups.inactive.filter(p => productCategory(p) === 'produto');
+  const inactiveMachines = groups.inactive.filter(p => productCategory(p) !== 'produto');
+  const inconsistentProducts = groups.inconsistent.filter(p => productCategory(p) === 'produto');
+  const inconsistentMachines = groups.inconsistent.filter(p => productCategory(p) !== 'produto');
+
+  setStatusNote(
+    'products-inactive-note',
+    `${inactiveProducts.length} ${inactiveProducts.length === 1 ? 'produto inativo excluído' : 'produtos inativos excluídos'} dos cálculos`
+  );
+  setStatusNote(
+    'machines-inactive-note',
+    `${inactiveMachines.length} ${inactiveMachines.length === 1 ? 'máquina inativa excluída' : 'máquinas inativas excluídas'} dos cálculos`
+  );
+  setStatusWarning('products-status-warning', inconsistentProducts.length, 'produto');
+  setStatusWarning('machines-status-warning', inconsistentMachines.length, 'máquina');
+}
+
+function setStatusNote(id, text) {
+  document.getElementById(id).textContent = text;
+}
+
+function setStatusWarning(id, count, singular) {
+  const element = document.getElementById(id);
+  element.hidden = count === 0;
+  element.textContent = count
+    ? `${count} ${count === 1 ? `${singular} com status inconsistente` : `${singular}s com status inconsistente`} excluído${count === 1 ? '' : 's'} dos cálculos`
+    : '';
 }
 
 function totalQty(product) {
@@ -135,22 +374,25 @@ function getStatus(product) {
   return { cls: 'ok', label: 'OK' };
 }
 
-function renderStats() {
-  const productItems = products.filter(p => productCategory(p) === 'produto');
-  const machineItems = products.filter(p => productCategory(p) !== 'produto');
+function renderStats(activeProducts) {
+  const productItems = activeProducts.filter(p => productCategory(p) === 'produto');
+  const machineItems = activeProducts.filter(p => productCategory(p) !== 'produto');
   const lowItems = productItems.filter(p => getStatus(p).cls === 'low');
   const outItems = productItems.filter(p => getStatus(p).cls === 'out');
-  const csvTotal = csvLots.reduce((sum, lot) => sum + (Number(lot.total_aplicado) || 0), 0);
 
   document.getElementById('stat-produtos').textContent = productItems.length;
   document.getElementById('stat-maquinas').textContent = machineItems.length;
   document.getElementById('stat-baixo').textContent = lowItems.length;
   document.getElementById('stat-zerado').textContent = outItems.length;
+}
+
+function renderCsvSummary() {
+  const csvTotal = csvLots.reduce((sum, lot) => sum + (Number(lot.total_aplicado) || 0), 0);
   document.getElementById('stat-csv').textContent = formatNumber(csvTotal);
 }
 
-function renderPurchaseSuggestions() {
-  const rows = products
+function renderPurchaseSuggestions(activeProducts) {
+  const rows = activeProducts
     .filter(p => productCategory(p) === 'produto')
     .map(p => {
       const qty = totalQty(p);
@@ -183,12 +425,14 @@ function renderPurchaseSuggestions() {
   `).join('');
 }
 
-function renderTopProducts() {
+function renderTopProducts(activeProducts) {
   const totals = new Map();
 
   csvLots.forEach(lot => {
     (lot.baixas_csv_itens || []).forEach(item => {
-      addTopProduct(totals, item.produto_id, item.produto_nome, Number(item.quantidade_csv) || 0);
+      const product = findProduct(item.produto_id, item.produto_nome);
+      if (!product || !activeProducts.includes(product) || productCategory(product) !== 'produto') return;
+      addTopProduct(totals, product.id, product.nome, Number(item.quantidade_csv) || 0);
     });
   });
 
@@ -196,8 +440,8 @@ function renderTopProducts() {
     .filter(row => String(row.tipo || '').startsWith('baixa') && row.tipo !== 'baixa_csv_produto')
     .forEach(row => {
       const product = findProduct(row.produto_id, row.produtos?.nome);
-      if (product && productCategory(product) !== 'produto') return;
-      addTopProduct(totals, row.produto_id, row.produtos?.nome || 'Produto', Math.abs((row.quantidade_nova || 0) - (row.quantidade_anterior || 0)));
+      if (!product || !activeProducts.includes(product) || productCategory(product) !== 'produto') return;
+      addTopProduct(totals, product.id, product.nome, Math.abs((row.quantidade_nova || 0) - (row.quantidade_anterior || 0)));
     });
 
   const rows = Array.from(totals.values())
@@ -252,21 +496,23 @@ function renderCsvLots() {
   `).join('');
 }
 
-function renderAttention() {
-  const productItems = products.filter(p => productCategory(p) === 'produto');
-  const outItems = productItems.filter(p => getStatus(p).cls === 'out');
-  const lowItems = productItems.filter(p => getStatus(p).cls === 'low');
-  const withoutMinItems = productItems.filter(p => (Number(p.minimo) || 0) === 0);
-  const withoutCodesItems = productItems.filter(p => !p.codigo_referencia && !p.codigo_interno && !p.sku);
-  const csvProblems = csvLots.reduce((sum, lot) => sum + (Number(lot.nao_encontrados) || 0) + (Number(lot.estoque_insuficiente) || 0), 0);
-  const lastCsv = csvLots[0] ? formatDate(csvLots[0].created_at) : 'Sem importacao';
+function renderAttention(activeProducts, csvAvailable) {
+  const grid = document.getElementById('attention-grid');
+  const cards = [];
 
-  attentionLists.productOut = outItems;
-  attentionLists.productLow = lowItems;
-  attentionLists.productWithoutCodes = withoutCodesItems;
-  attentionLists.productWithoutMin = withoutMinItems;
+  if (activeProducts) {
+    const productItems = activeProducts.filter(p => productCategory(p) === 'produto');
+    const outItems = productItems.filter(p => getStatus(p).cls === 'out');
+    const lowItems = productItems.filter(p => getStatus(p).cls === 'low');
+    const withoutMinItems = productItems.filter(p => (Number(p.minimo) || 0) === 0);
+    const withoutCodesItems = productItems.filter(p => !p.codigo_referencia && !p.codigo_interno && !p.sku);
 
-  document.getElementById('attention-grid').innerHTML = `
+    attentionLists.productOut = outItems;
+    attentionLists.productLow = lowItems;
+    attentionLists.productWithoutCodes = withoutCodesItems;
+    attentionLists.productWithoutMin = withoutMinItems;
+
+    cards.push(`
     <div class="attention-card red">
       <span>Reposicao urgente</span>
       <strong>${formatNumber(outItems.length)}</strong>
@@ -290,8 +536,18 @@ function renderAttention() {
       <strong>${formatNumber(withoutMinItems.length)}</strong>
       <p>Produtos comuns sem alerta minimo configurado.</p>
       ${attentionButton('productWithoutMin', 'Produtos sem minimo configurado', withoutMinItems.length)}
-    </div>
-    <div class="attention-card yellow">
+    </div>`);
+  } else {
+    attentionLists.productOut = [];
+    attentionLists.productLow = [];
+    attentionLists.productWithoutCodes = [];
+    attentionLists.productWithoutMin = [];
+  }
+
+  if (csvAvailable) {
+    const csvProblems = csvLots.reduce((sum, lot) => sum + (Number(lot.nao_encontrados) || 0) + (Number(lot.estoque_insuficiente) || 0), 0);
+    const lastCsv = csvLots[0] ? formatDate(csvLots[0].created_at) : 'Sem importacao';
+    cards.push(`<div class="attention-card yellow">
       <span>CSV com alerta</span>
       <strong>${formatNumber(csvProblems)}</strong>
       <p>Linhas nao encontradas ou com estoque insuficiente nos lotes recentes.</p>
@@ -300,13 +556,16 @@ function renderAttention() {
       <span>Ultimo fechamento</span>
       <strong>${escapeHtml(lastCsv)}</strong>
       <p>Ultima importacao CSV registrada no sistema.</p>
-    </div>
-  `;
+    </div>`);
+  }
+
+  grid.innerHTML = cards.join('');
+  if (!activeProducts) appendUnavailableCard(grid, 'Dados de produtos indisponíveis.', true);
+  if (!csvAvailable) appendUnavailableCard(grid, 'Dados de CSV indisponíveis.');
 }
 
-function renderMachineReport() {
-  const machineItems = products.filter(p => productCategory(p) !== 'produto');
-  const machineSales = getMachineSales();
+function renderMachineReport(activeProducts, historyAvailable) {
+  const machineItems = activeProducts.filter(p => productCategory(p) !== 'produto');
   const low = machineItems.filter(p => getStatus(p).cls === 'low');
   const out = machineItems.filter(p => getStatus(p).cls === 'out');
 
@@ -314,20 +573,29 @@ function renderMachineReport() {
   document.getElementById('machine-stat-units').textContent = formatNumber(machineItems.reduce((sum, p) => sum + totalQty(p), 0));
   document.getElementById('machine-stat-low').textContent = formatNumber(low.length);
   document.getElementById('machine-stat-out').textContent = formatNumber(out.length);
-  document.getElementById('machine-stat-sales').textContent = formatNumber(machineSales.reduce((sum, row) => sum + row.qty, 0));
-
   renderMachinePurchaseSuggestions(machineItems);
-  renderTopMachines(machineSales);
-  renderMachineSales(machineSales);
-  renderMachineAttention(machineItems, machineSales);
+
+  let machineSales = null;
+  if (historyAvailable) {
+    machineSales = getMachineSales(activeProducts);
+    document.getElementById('machine-stat-sales').textContent = formatNumber(machineSales.reduce((sum, row) => sum + row.qty, 0));
+    renderTopMachines(machineSales);
+    renderMachineSales(machineSales);
+  } else {
+    document.getElementById('machine-stat-sales').textContent = '-';
+    setElementUnavailable('top-machines-list');
+    setElementUnavailable('machine-sales-list');
+  }
+
+  renderMachineAttention(machineItems, machineSales, historyAvailable);
 }
 
-function getMachineSales() {
+function getMachineSales(activeProducts) {
   return historyRows
     .filter(row => {
       if (!String(row.tipo || '').startsWith('baixa') || row.tipo === 'baixa_csv_produto') return false;
       const product = findProduct(row.produto_id, row.produtos?.nome);
-      return product && productCategory(product) !== 'produto';
+      return product && activeProducts.includes(product) && productCategory(product) !== 'produto';
     })
     .map(row => ({
       row,
@@ -449,21 +717,24 @@ function renderMachineSales(machineSales) {
   }).join('');
 }
 
-function renderMachineAttention(machineItems, machineSales) {
-  const outItems = machineItems.filter(p => getStatus(p).cls === 'out');
-  const lowItems = machineItems.filter(p => getStatus(p).cls === 'low');
-  const withoutMinItems = machineItems.filter(p => (Number(p.minimo) || 0) === 0);
-  const withoutCodesItems = machineItems.filter(p => !p.codigo_referencia && !p.codigo_interno && !p.sku);
-  const voltageOutItems = machineItems.filter(p => getVoltageIssues(p).length > 0);
-  const lastSale = machineSales[0] ? formatDate(machineSales[0].row.created_at) : 'Sem baixas';
+function renderMachineAttention(machineItems, machineSales, historyAvailable) {
+  const grid = document.getElementById('machine-attention-grid');
+  const cards = [];
 
-  attentionLists.machineOut = outItems;
-  attentionLists.machineLow = lowItems;
-  attentionLists.machineVoltageOut = voltageOutItems;
-  attentionLists.machineWithoutCodes = withoutCodesItems;
-  attentionLists.machineWithoutMin = withoutMinItems;
+  if (machineItems) {
+    const outItems = machineItems.filter(p => getStatus(p).cls === 'out');
+    const lowItems = machineItems.filter(p => getStatus(p).cls === 'low');
+    const withoutMinItems = machineItems.filter(p => (Number(p.minimo) || 0) === 0);
+    const withoutCodesItems = machineItems.filter(p => !p.codigo_referencia && !p.codigo_interno && !p.sku);
+    const voltageOutItems = machineItems.filter(p => getVoltageIssues(p).length > 0);
 
-  document.getElementById('machine-attention-grid').innerHTML = `
+    attentionLists.machineOut = outItems;
+    attentionLists.machineLow = lowItems;
+    attentionLists.machineVoltageOut = voltageOutItems;
+    attentionLists.machineWithoutCodes = withoutCodesItems;
+    attentionLists.machineWithoutMin = withoutMinItems;
+
+    cards.push(`
     <div class="attention-card red">
       <span>Reposicao urgente</span>
       <strong>${formatNumber(outItems.length)}</strong>
@@ -493,13 +764,29 @@ function renderMachineAttention(machineItems, machineSales) {
       <strong>${formatNumber(withoutMinItems.length)}</strong>
       <p>Maquinas sem alerta minimo configurado.</p>
       ${attentionButton('machineWithoutMin', 'Maquinas sem minimo configurado', withoutMinItems.length)}
-    </div>
-    <div class="attention-card green">
+    </div>`);
+  } else {
+    attentionLists.machineOut = [];
+    attentionLists.machineLow = [];
+    attentionLists.machineVoltageOut = [];
+    attentionLists.machineWithoutCodes = [];
+    attentionLists.machineWithoutMin = [];
+  }
+
+  if (machineItems && historyAvailable) {
+    const lastSale = machineSales[0] ? formatDate(machineSales[0].row.created_at) : 'Sem baixas';
+    cards.push(`<div class="attention-card green">
       <span>Ultima venda</span>
       <strong>${escapeHtml(lastSale)}</strong>
       <p>Ultima baixa manual de maquina registrada.</p>
-    </div>
-  `;
+    </div>`);
+  }
+
+  grid.innerHTML = cards.join('');
+  if (!machineItems) appendUnavailableCard(grid, 'Dados de produtos indisponíveis.', true);
+  if (!machineItems || !historyAvailable) {
+    appendUnavailableCard(grid, 'Dados históricos de máquinas indisponíveis.');
+  }
 }
 
 function attentionButton(key, title, count) {
