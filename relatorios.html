@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Relatorio Final - Compras</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<link rel="stylesheet" href="css/relatorios.css?v=20260714-fotos-relatorio">
+<link rel="stylesheet" href="css/relatorios.css?v=20260729-relatorios-ativos-2">
 </head>
 <body>
 
@@ -31,7 +31,7 @@
       <div class="readonly-badge">Somente leitura</div>
     </div>
     <div class="header-right">
-      <button class="btn-ghost" onclick="loadData()">Atualizar</button>
+      <button class="btn-ghost" id="report-refresh-button" type="button" onclick="loadData()">Atualizar</button>
       <a class="btn-ghost" href="admin.html">Admin</a>
       <button class="btn-logout" onclick="doLogout()">Sair</button>
     </div>
@@ -42,6 +42,10 @@
       <button class="report-tab active" id="report-tab-produtos" onclick="switchReportTab('produtos')">Produtos</button>
       <button class="report-tab" id="report-tab-maquinas" onclick="switchReportTab('maquinas')">Maquinas / Prensas</button>
     </nav>
+    <div class="report-update-meta">
+      <p>Dados atualizados ao abrir a página ou pelo botão Atualizar.</p>
+      <div class="report-load-status" id="report-load-status" role="alert" hidden></div>
+    </div>
 
     <div class="report-tab-panel active" id="report-panel-produtos">
     <section class="summary-grid">
@@ -66,6 +70,10 @@
         <div class="stat-value blue" id="stat-csv">-</div>
       </div>
     </section>
+    <div class="product-status-notes" aria-live="polite">
+      <p class="product-status-note" id="products-inactive-note"></p>
+      <p class="product-status-note warning" id="products-status-warning" hidden></p>
+    </div>
 
     <section class="report-section">
       <div class="section-header">
@@ -149,6 +157,10 @@
           <div class="stat-value green" id="machine-stat-sales">-</div>
         </div>
       </section>
+      <div class="product-status-notes" aria-live="polite">
+        <p class="product-status-note" id="machines-inactive-note"></p>
+        <p class="product-status-note warning" id="machines-status-warning" hidden></p>
+      </div>
 
       <section class="report-section">
         <div class="section-header">
@@ -227,6 +239,6 @@
 </div>
 
 <script src="js/supabase-config.js"></script>
-<script src="js/relatorios.js?v=20260714-dois-administradores"></script>
+<script src="js/relatorios.js?v=20260729-relatorios-ativos-2"></script>
 </body>
 </html>
