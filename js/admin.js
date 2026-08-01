@@ -547,7 +547,7 @@ async function saveProduct() {
     body.codigo_referencia_220v = voltageCodes.referencia220 || null;
     body.codigo_barras_110v = voltageCodes.barras110 || null;
     body.codigo_barras_220v = voltageCodes.barras220 || null;
-    body.codigo_fabricante = formatVoltageCodes(voltageCodes.fabricante110, voltageCodes.fabricante220) || legacyCodes.fabricante || null;
+    body.codigo_fabricante = formatVoltageCodes(voltageCodes.fabricante110, voltageCodes.fabricante220);
     body.codigo_interno = formatVoltageCodes(voltageCodes.interno110, voltageCodes.interno220) || legacyCodes.interno || null;
     body.codigo_referencia = formatVoltageCodes(voltageCodes.referencia110, voltageCodes.referencia220) || legacyCodes.referencia || null;
     body.sku = formatVoltageCodes(voltageCodes.barras110, voltageCodes.barras220) || legacyCodes.barras || null;
