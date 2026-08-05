@@ -295,6 +295,8 @@
   .csv-upload-btn input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
   .csv-preview-summary { color: var(--muted); background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 12px 14px; font-size: 12px; margin-bottom: 14px; }
   .csv-preview-summary strong { color: var(--text); }
+  .csv-duplicate-warning { color: var(--yellow); background: rgba(245,158,11,.10); border: 1px solid rgba(245,158,11,.38); border-radius: 4px; padding: 12px 14px; font-size: 12px; line-height: 1.45; margin: -4px 0 14px; }
+  .csv-duplicate-warning[hidden] { display: none; }
   .csv-preview-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
   .csv-apply-message { color: var(--muted); font-size: 12px; }
   .csv-apply-message.ok { color: var(--green); }
