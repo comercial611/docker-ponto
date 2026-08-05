@@ -32,6 +32,7 @@ Esta pasta documenta a configuracao de seguranca usada no Supabase de producao.
 26. `26-ampliar-lote-nuvemshop-15-itens.sql`
 27. `27-tags-e-fornecedor-produtos.sql`
 28. `28-produto-ativo-inativo.sql`
+29. `29-registrar-baixa-administrativa.sql`
 
 ## O que foi protegido
 
@@ -75,6 +76,7 @@ Esta pasta documenta a configuracao de seguranca usada no Supabase de producao.
 - `26-ampliar-lote-nuvemshop-15-itens.sql`: amplia de dez para quinze itens o limite do lote controlado, mantendo as mesmas validacoes, reserva atomica, janela temporaria e interrupcao diante de falha ou incerteza.
 - `27-tags-e-fornecedor-produtos.sql`: adiciona tags pesquisaveis e a situacao do fornecedor ao cadastro de produtos. Aplicar somente pelo fluxo de migrations ja usado no projeto; nao executar diretamente pelo navegador.
 - `28-produto-ativo-inativo.sql`: adiciona o estado ativo/inativo, auditoria administrativa e bloqueios locais de estoque, CSV e vinculos Nuvemshop. Deve ser aplicada antes das futuras interfaces de inativacao, somente pelo fluxo de migrations do projeto.
+- `29-registrar-baixa-administrativa.sql`: cria a funcao atomica usada pela baixa no painel administrativo; estoque, ultima baixa e historico sao gravados juntos ou nada e confirmado.
 - `functions/nuvemshop-oauth`: conclui a instalacao OAuth e salva o token criptografado, sem exibir a credencial.
 - `functions/nuvemshop-lgpd`: recebe os tres webhooks obrigatorios de privacidade e valida a assinatura da Nuvemshop.
 - `functions/nuvemshop-catalogo`: consulta o catalogo e os locais de estoque da Nuvemshop somente para administradores, sem alterar o estoque externo.
