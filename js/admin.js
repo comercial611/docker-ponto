@@ -3338,3 +3338,89 @@ function toggleTheme() {
 })();
 
 checkSession();
+function escapeCsvImportHistoryHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, (char) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  })[char]);
+}
+
+function formatCsvImportHistoryMovement(value) {
+  const parts = String(value || '').split('-');
+  if (parts.length === 3 && parts[0].length === 4) return `${parts[2]}/${parts[1]}/${parts[0]}`;
+  return '-';
+}
+
+function formatCsvImportHistoryCreatedAt(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '-';
+  return new Intl.DateTimeFormat('pt-BR', {
+    dateStyle: 'short',
+    timeStyle: 'short'
+  }).format(date);
+}
+
+async function loadCsvImportHistory() {
+  const statusEl = document.getElementById('csv-import-history-status');
+  const tbody = document.getElementById('csv-import-history-tbody');
+  if (!statusEl || !tbody) return;
+
+  statusEl.className = 'csv-import-history-status';
+  statusEl.textContent = 'Carregando importacoes...';
+  tbody.innerHTML = '';
+
+  const { data, error } = await sb
+    .from('baixas_csv_lotes')
+    .select('id, aplicado_email, total_aplicado, created_at, data_movimento')
+    .order('created_at', { ascending: false })
+    .limit(15);
+
+  if (error) {
+    statusEl.classList.add('error');
+    statusEl.textContent = `Nao foi possivel carregar o historico: ${error.message}`;
+    return;
+  }
+
+  const imports = data || [];
+  statusEl.textContent = imports.length
+    ? `Mostrando as ${imports.length} importacoes mais recentes.`
+    : 'Nenhuma importacao CSV registrada.';
+
+  tbody.innerHTML = imports.length
+    ? imports.map((item) => `
+        <tr>
+          <td>${formatCsvImportHistoryMovement(item.data_movimento)}</td>
+          <td>${formatCsvImportHistoryCreatedAt(item.created_at)}</td>
+          <td><strong>${Number(item.total_aplicado || 0).toLocaleString('pt-BR')}</strong></td>
+          <td>${escapeCsvImportHistoryHtml(item.aplicado_email || '-')}</td>
+        </tr>
+      `).join('')
+    : '<tr><td colspan="4" class="csv-import-history-empty">Nenhuma importacao CSV registrada.</td></tr>';
+}
+
+function initCsvImportHistory() {
+  const toggleBtn = document.getElementById('btn-toggle-csv-import-history');
+  const refreshBtn = document.getElementById('btn-refresh-csv-import-history');
+  const content = document.getElementById('csv-import-history-content');
+  if (!toggleBtn || !refreshBtn || !content) return;
+
+  toggleBtn.addEventListener('click', async () => {
+    const opening = content.hidden;
+    content.hidden = !opening;
+    toggleBtn.textContent = opening ? 'Fechar' : 'Abrir';
+    toggleBtn.setAttribute('aria-expanded', String(opening));
+    refreshBtn.hidden = !opening;
+    if (opening) await loadCsvImportHistory();
+  });
+
+  refreshBtn.addEventListener('click', loadCsvImportHistory);
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initCsvImportHistory);
+} else {
+  initCsvImportHistory();
+}
