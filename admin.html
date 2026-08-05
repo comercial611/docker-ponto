@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Estoque - Administração</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<link rel="stylesheet" href="css/admin.css?v=20260717-nuvemshop-front-3">
+<link rel="stylesheet" href="css/admin.css?v=20260728-produto-status-2">
 </head>
 <body>
 
@@ -63,14 +63,20 @@
   <!-- DASHBOARD -->
   <div class="tab-content active" id="tab-dashboard">
     <div class="stats-grid">
-      <div class="stat-card"><div class="stat-label">Total de produtos</div><div class="stat-value" id="stat-total">—</div></div>
+      <div class="stat-card"><div class="stat-label">Produtos ativos</div><div class="stat-value" id="stat-total">—</div></div>
       <div class="stat-card"><div class="stat-label">Em estoque</div><div class="stat-value green" id="stat-ok">—</div></div>
       <div class="stat-card"><div class="stat-label">Estoque baixo</div><div class="stat-value yellow" id="stat-low">—</div></div>
       <div class="stat-card"><div class="stat-label">Sem estoque</div><div class="stat-value red" id="stat-out">—</div></div>
+      <div class="stat-card stat-card-inactive"><div class="stat-label">Produtos inativos</div><div class="stat-value" id="stat-inactive">—</div></div>
     </div>
     <div class="section-header">
-      <div class="section-title">Todos os produtos</div>
+      <div class="section-title">Produtos</div>
       <div class="filters-row">
+        <select class="filter-select" id="filter-product-active-dash" onchange="renderDashTable()">
+          <option value="active" selected>Ativos</option>
+          <option value="all">Todos</option>
+          <option value="inactive">Inativos</option>
+        </select>
         <select class="filter-select" id="filter-status" onchange="renderDashTable()">
           <option value="">Todos os status</option>
           <option value="ok">Em estoque</option>
@@ -85,7 +91,7 @@
     </div>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Foto</th><th>Produto</th><th>Códigos</th><th>Qtd. atual</th><th>Mín.</th><th>Status</th><th>Última baixa</th><th>Ações</th></tr></thead>
+        <thead><tr><th>Foto</th><th>Produto</th><th>Cadastro</th><th>Códigos</th><th>Qtd. atual</th><th>Mín.</th><th>Status</th><th>Última baixa</th><th>Ações</th></tr></thead>
         <tbody id="dash-tbody"></tbody>
       </table>
     </div>
@@ -101,6 +107,14 @@
       <div class="form-section-label">Identificação</div>
       <div class="form-field"><label>Nome do produto *</label><input type="text" id="p-nome" placeholder="Ex: Prensa de Caneca"></div>
       <div class="form-field"><label>Categoria</label><select id="p-categoria"><option value="maquina">Máquina / Prensa</option><option value="produto">Produto</option></select></div>
+      <div class="form-field">
+        <label for="p-tags-input">Tags</label>
+        <div class="tag-input-control" id="p-tags-control">
+          <div class="tag-chip-list" id="p-tags-list" aria-live="polite"></div>
+          <input type="text" id="p-tags-input" placeholder="Digite e pressione Enter ou vírgula" aria-describedby="p-tags-feedback">
+        </div>
+        <div class="tag-input-hint" id="p-tags-feedback">Até 10 tags. Separe por vírgula ou Enter.</div>
+      </div>
       <div id="codes-simple-wrap" class="visible">
         <div class="codes-grid">
           <div class="form-field"><label>Código do Fabricante</label><input type="text" id="p-cod-fab" placeholder="FAB-1234"></div>
@@ -167,6 +181,10 @@
 
       <div class="form-field" style="margin-top:14px;"><label>Observações</label><textarea id="p-obs" rows="2" placeholder="Opcional..."></textarea></div>
 
+      <div class="form-section-label">Fornecedor</div>
+      <div class="form-field"><label for="p-fornecedor-status">Situação do fornecedor</label><select id="p-fornecedor-status"><option value="normal">Normal</option><option value="atencao">Atenção</option><option value="em_falta">Em falta</option></select></div>
+      <div class="form-field"><label for="p-fornecedor-obs">Observação do fornecedor</label><textarea id="p-fornecedor-obs" rows="2" placeholder="Obrigatória para atenção ou em falta"></textarea></div>
+
       <div class="form-section-label">Imagem</div>
       <div class="form-field">
         <label>URL da imagem</label>
@@ -225,12 +243,13 @@
     <div style="margin-top:28px;">
       <div class="section-header">
         <div class="section-title">Produtos cadastrados</div>
+        <select class="filter-select" id="filter-product-active-products" onchange="renderProdTable()"><option value="all" selected>Todos</option><option value="active">Ativos</option><option value="inactive">Inativos</option></select>
         <select class="filter-select" id="filter-prod-categoria" onchange="renderProdTable()"><option value="">Todas as categorias</option><option value="maquina">Máquinas / Prensas</option><option value="produto">Produtos</option></select>
         <input class="search-input" id="search-prod" placeholder="Buscar produto..." oninput="renderProdTable()">
       </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Foto</th><th>Produto</th><th>Categoria</th><th>Códigos</th><th>Qtd.</th><th>Mín.</th><th>Ações</th></tr></thead>
+          <thead><tr><th>Foto</th><th>Produto</th><th>Categoria</th><th>Cadastro</th><th>Códigos</th><th>Qtd.</th><th>Mín.</th><th>Ações</th></tr></thead>
           <tbody id="prod-tbody"></tbody>
         </table>
       </div>
@@ -552,6 +571,23 @@
   </div>
 </div>
 
+<!-- MODAL STATUS DO PRODUTO -->
+<div class="modal-overlay" id="product-status-modal" role="dialog" aria-modal="true" aria-labelledby="product-status-modal-title" aria-describedby="product-status-description" onclick="if (event.target === this) closeProductStatusModal()">
+  <div class="modal product-status-modal">
+    <div class="modal-title" id="product-status-modal-title">Alterar status do produto</div>
+    <p class="product-status-confirmation" id="product-status-description">Você está prestes a <strong id="product-status-destination"></strong> <span id="product-status-name"></span>.</p>
+    <div class="form-field" id="product-status-reason-wrap">
+      <label for="product-status-reason">Motivo da inativação *</label>
+      <textarea id="product-status-reason" rows="3" maxlength="500" placeholder="Informe o motivo da inativação"></textarea>
+    </div>
+    <div class="product-status-error" id="product-status-error" role="alert"></div>
+    <div class="product-status-actions">
+      <button class="btn-save" id="product-status-confirm" onclick="confirmProductStatusChange()">Confirmar</button>
+      <button class="btn-cancel" id="product-status-cancel" onclick="closeProductStatusModal()">Cancelar</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL EXCLUIR -->
 <div class="modal-overlay" id="delete-modal">
   <div class="modal">
@@ -664,7 +700,9 @@
 
 <script src="js/supabase-config.js"></script>
 <script src="js/admin-utils.js?v=20260724-admin-auditoria-1"></script>
+<script src="js/produto-busca.js?v=20260725-tags-fornecedor-1"></script>
 <script src="js/admin-nuvemshop-auditoria.js?v=20260724-admin-auditoria-1"></script>
-<script src="js/admin.js?v=20260724-admin-auditoria-1"></script>
+<script src="js/admin-notificacoes.js?v=20260725-seguranca-notificacoes-1"></script>
+<script src="js/admin.js?v=20260731-codigo-fabricante-1"></script>
 </body>
 </html>
