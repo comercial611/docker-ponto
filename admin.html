@@ -241,6 +241,35 @@
       </div>
     </div>
 
+    <section class="csv-import-history-card" aria-labelledby="csv-import-history-title">
+      <div class="csv-import-history-header">
+        <div>
+          <h3 id="csv-import-history-title">Historico de importacoes CSV</h3>
+          <p class="csv-preview-sub">Consulte as ultimas baixas aplicadas por arquivo.</p>
+        </div>
+        <div class="csv-import-history-actions">
+          <button type="button" class="btn-secondary" id="btn-toggle-csv-import-history" aria-expanded="false">Abrir</button>
+          <button type="button" class="btn-secondary" id="btn-refresh-csv-import-history" hidden>Atualizar</button>
+        </div>
+      </div>
+      <div id="csv-import-history-content" hidden>
+        <p id="csv-import-history-status" class="csv-import-history-status">Carregando importacoes...</p>
+        <div class="table-wrap csv-import-history-table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Movimento</th>
+                <th>Aplicado em</th>
+                <th>Unidades baixadas</th>
+                <th>Responsavel</th>
+              </tr>
+            </thead>
+            <tbody id="csv-import-history-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
     <div style="margin-top:28px;">
       <div class="section-header">
         <div class="section-title">Produtos cadastrados</div>
