@@ -214,7 +214,7 @@
         <div class="csv-preview-controls">
           <label class="csv-movement-date">
             <span>Data do movimento</span>
-            <input type="date" id="csv-movement-date" onchange="updateCsvApplyState()">
+            <input type="date" id="csv-movement-date" onchange="handleCsvMovementDateChange()">
           </label>
           <label class="csv-upload-btn">
             Selecionar CSV
@@ -226,6 +226,7 @@
       <div class="csv-preview-summary" id="csv-preview-summary">
         Nenhum arquivo selecionado.
       </div>
+      <p class="csv-duplicate-warning" id="csv-duplicate-warning" hidden></p>
       <div class="csv-preview-actions">
         <button class="btn-save" id="csv-apply-btn" onclick="confirmCsvBaixa()" disabled>Aplicar baixa</button>
         <button class="btn-cancel" onclick="clearCsvPreview()">Limpar CSV</button>
