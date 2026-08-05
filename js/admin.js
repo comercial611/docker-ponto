@@ -2665,49 +2665,43 @@ async function confirmBaixa() {
   const atual = currentBaixaEstoqueAtual();
   if (qty > atual) { errorEl.textContent = `Quantidade maior que o estoque disponível (${atual}).`; return; }
 
-  const novaQty = atual - qty;
   const btn = document.getElementById('btn-confirm-baixa');
   btn.disabled = true; btn.textContent = 'Salvando...';
 
-  const agora = new Date().toISOString();
-  let updateBody = { ultima_baixa_vendedor: vendedor, ultima_baixa_em: agora };
   let voltLabel = null;
 
   if (baixaProduto.tem_voltagem) {
     voltLabel = baixaVoltagemSelecionada === 'v110' ? '110V' : '220V';
-    updateBody[baixaVoltagemSelecionada === 'v110' ? 'quantidade_110v' : 'quantidade_220v'] = novaQty;
-    updateBody.ultima_baixa_voltagem = voltLabel;
-  } else {
-    updateBody.quantidade = novaQty;
-    updateBody.ultima_baixa_voltagem = null;
   }
 
-  const { error: updateError } = await sb.from('produtos').update(updateBody).eq('id', baixaProduto.id);
-  if (updateError) {
+  const { data, error } = await sb.rpc('registrar_baixa_administrativa', {
+    p_produto_id: baixaProduto.id,
+    p_quantidade: qty,
+    p_vendedor: vendedor,
+    p_voltagem: voltLabel
+  });
+
+  if (error) {
     btn.disabled = false;
     btn.textContent = 'Confirmar baixa';
-    errorEl.textContent = updateError.message || 'Não foi possível atualizar o produto.';
+    errorEl.textContent = error.message || 'Não foi possível registrar a baixa.';
     return;
   }
 
-  const { data: historicoData, error: historicoError } = await sb.from('historico').insert({
-    produto_id: baixaProduto.id,
-    quantidade_anterior: atual,
-    quantidade_nova: novaQty,
-    usuario: vendedor,
-    vendedor: vendedor,
-    voltagem: voltLabel,
-    tipo: 'baixa'
-  }).select('id, produto_id, quantidade_anterior, quantidade_nova, usuario, voltagem, tipo, vendedor').single();
-
-  if (historicoError) {
-    btn.disabled = false;
-    btn.textContent = 'Confirmar baixa';
-    errorEl.textContent = historicoError.message || 'Produto atualizado, mas não foi possível registrar o histórico.';
-    return;
+  const resultado = Array.isArray(data) ? data[0] : data;
+  if (resultado) {
+    pushHistoryNotification({
+      id: resultado.historico_id,
+      produto_id: resultado.produto_id,
+      quantidade_anterior: resultado.quantidade_anterior,
+      quantidade_nova: resultado.quantidade_nova,
+      usuario: resultado.usuario,
+      vendedor: resultado.vendedor,
+      voltagem: resultado.voltagem,
+      tipo: resultado.tipo,
+      created_at: resultado.created_at
+    });
   }
-
-  if (historicoData) pushHistoryNotification(historicoData);
 
   btn.disabled = false; btn.textContent = 'Confirmar baixa';
   closeBaixaPanel();

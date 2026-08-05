@@ -30,6 +30,7 @@ Esta pasta documenta a configuracao de seguranca usada no Supabase de producao.
 24. `24-multiplicadores-variantes-nuvemshop.sql`
 25. `25-aplicacao-lote-controlada-nuvemshop.sql`
 26. `26-ampliar-lote-nuvemshop-15-itens.sql`
+27. `27-registrar-baixa-administrativa.sql`
 
 ## O que foi protegido
 
@@ -71,6 +72,7 @@ Esta pasta documenta a configuracao de seguranca usada no Supabase de producao.
 - `24-multiplicadores-variantes-nuvemshop.sql`: permite varias ofertas externas para o mesmo produto fisico, registra quantas unidades cada venda consome e recalcula o estoque externo por divisao inteira sem alterar os vinculos existentes.
 - `25-aplicacao-lote-controlada-nuvemshop.sql`: cria a aplicacao protegida em lote, posteriormente ampliada e validada para dois a dez itens; reserva todos atomicamente, registra cada resultado e interrompe os itens restantes diante de qualquer falha ou incerteza.
 - `26-ampliar-lote-nuvemshop-15-itens.sql`: amplia de dez para quinze itens o limite do lote controlado, mantendo as mesmas validacoes, reserva atomica, janela temporaria e interrupcao diante de falha ou incerteza.
+- `27-registrar-baixa-administrativa.sql`: cria a funcao atomica usada pela baixa no painel administrativo; estoque, ultima baixa e historico sao gravados juntos ou nada e confirmado.
 - `functions/nuvemshop-oauth`: conclui a instalacao OAuth e salva o token criptografado, sem exibir a credencial.
 - `functions/nuvemshop-lgpd`: recebe os tres webhooks obrigatorios de privacidade e valida a assinatura da Nuvemshop.
 - `functions/nuvemshop-catalogo`: consulta o catalogo e os locais de estoque da Nuvemshop somente para administradores, sem alterar o estoque externo.
