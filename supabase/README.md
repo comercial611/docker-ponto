@@ -33,6 +33,8 @@ Esta pasta documenta a configuracao de seguranca usada no Supabase de producao.
 27. `27-tags-e-fornecedor-produtos.sql`
 28. `28-produto-ativo-inativo.sql`
 29. `29-registrar-baixa-administrativa.sql`
+30. `30-corrigir-baixa-administrativa-created-at.sql`
+31. `31-bloquear-reaplicacao-csv-por-arquivo.sql`
 
 ## O que foi protegido
 
@@ -44,6 +46,7 @@ Esta pasta documenta a configuracao de seguranca usada no Supabase de producao.
 - Baixa manual de produtos passa pela funcao `public.registrar_baixa_produto_manual`, com senha validada no Supabase.
 - Baixa por CSV de produtos passa pela funcao `public.registrar_baixa_csv_produtos`, restrita a admin.
 - Cada baixa por CSV gera um lote de conferencia em `public.baixas_csv_lotes` e itens em `public.baixas_csv_itens`.
+- O mesmo arquivo CSV nao pode ser aplicado novamente, mesmo que a data de movimento seja alterada.
 - Historico de movimentacao fica centralizado no Supabase.
 
 ## Arquivos
@@ -77,6 +80,8 @@ Esta pasta documenta a configuracao de seguranca usada no Supabase de producao.
 - `27-tags-e-fornecedor-produtos.sql`: adiciona tags pesquisaveis e a situacao do fornecedor ao cadastro de produtos. Aplicar somente pelo fluxo de migrations ja usado no projeto; nao executar diretamente pelo navegador.
 - `28-produto-ativo-inativo.sql`: adiciona o estado ativo/inativo, auditoria administrativa e bloqueios locais de estoque, CSV e vinculos Nuvemshop. Deve ser aplicada antes das futuras interfaces de inativacao, somente pelo fluxo de migrations do projeto.
 - `29-registrar-baixa-administrativa.sql`: cria a funcao atomica usada pela baixa no painel administrativo; estoque, ultima baixa e historico sao gravados juntos ou nada e confirmado.
+- `30-corrigir-baixa-administrativa-created-at.sql`: corrige a ambiguidade de `created_at` na baixa administrativa atomica.
+- `31-bloquear-reaplicacao-csv-por-arquivo.sql`: identifica o CSV pelo hash do arquivo em toda a historico, bloqueia reaplicacao com qualquer data de movimento e preserva a operacao atomica.
 - `functions/nuvemshop-oauth`: conclui a instalacao OAuth e salva o token criptografado, sem exibir a credencial.
 - `functions/nuvemshop-lgpd`: recebe os tres webhooks obrigatorios de privacidade e valida a assinatura da Nuvemshop.
 - `functions/nuvemshop-catalogo`: consulta o catalogo e os locais de estoque da Nuvemshop somente para administradores, sem alterar o estoque externo.
