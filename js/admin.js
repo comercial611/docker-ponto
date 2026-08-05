@@ -6,6 +6,8 @@ let csvPreviewRows = [];
 let csvPreviewApplied = false;
 let csvPreviewFileName = null;
 let csvPreviewHash = null;
+let csvDuplicateLot = null;
+let csvDuplicateCheckPending = false;
 let csvLots = [];
 let csvLotsPage = 1;
 const csvLotsPageSize = 5;
@@ -2449,11 +2451,16 @@ function updateCsvApplyState() {
   }
 
   btn.textContent = applicable.length ? `Aplicar baixa (${applicable.length})` : 'Aplicar baixa';
-  btn.disabled = !applicable.length || invalid > 0 || insufficient > 0 || !movementDate || !csvPreviewHash;
+  btn.disabled = !applicable.length || invalid > 0 || insufficient > 0 || !movementDate || !csvPreviewHash || csvDuplicateCheckPending || !!csvDuplicateLot;
 
   if (!movementDate) {
     msg.classList.add('err');
     msg.textContent = 'Informe a data do movimento.';
+  } else if (csvDuplicateCheckPending) {
+    msg.textContent = 'Verificando se este arquivo CSV ja foi aplicado...';
+  } else if (csvDuplicateLot) {
+    msg.classList.add('err');
+    msg.textContent = 'Este arquivo CSV ja foi aplicado anteriormente. Selecione outro arquivo.';
   } else if (!csvPreviewRows.length) {
     msg.textContent = '';
   } else if (invalid > 0) {
@@ -2469,11 +2476,79 @@ function updateCsvApplyState() {
   }
 }
 
+function renderCsvDuplicateWarning() {
+  const warningEl = document.getElementById('csv-duplicate-warning');
+  if (!warningEl) return;
+
+  if (!csvDuplicateLot) {
+    warningEl.hidden = true;
+    warningEl.textContent = '';
+    return;
+  }
+
+  const appliedAt = csvDuplicateLot.created_at
+    ? new Date(csvDuplicateLot.created_at).toLocaleString('pt-BR')
+    : 'em uma data anterior';
+  const appliedBy = csvDuplicateLot.aplicado_email || 'um administrador';
+  const totalApplied = Number(csvDuplicateLot.total_aplicado || 0);
+  const quantityText = totalApplied
+    ? `, com ${totalApplied} unidade${totalApplied === 1 ? '' : 's'} baixada${totalApplied === 1 ? '' : 's'}`
+    : '';
+
+  const movementLabel = csvDuplicateLot.data_movimento
+    ? new Date(`${csvDuplicateLot.data_movimento}T12:00:00`).toLocaleDateString('pt-BR')
+    : '';
+
+  warningEl.textContent = `Atencao: este mesmo arquivo ja foi aplicado${movementLabel ? ` no movimento de ${movementLabel}` : ''} em ${appliedAt} por ${appliedBy}${quantityText}. O sistema bloqueia uma nova aplicacao mesmo se a data for alterada.`;
+  warningEl.hidden = false;
+}
+
+async function loadCsvDuplicateWarning() {
+  csvDuplicateLot = null;
+  renderCsvDuplicateWarning();
+
+  const requestedHash = csvPreviewHash;
+  if (!requestedHash) {
+    csvDuplicateCheckPending = false;
+    updateCsvApplyState();
+    return;
+  }
+
+  csvDuplicateCheckPending = true;
+  updateCsvApplyState();
+
+  const { data, error } = await sb
+    .from('baixas_csv_lotes')
+    .select('id, aplicado_email, total_aplicado, created_at, data_movimento')
+    .eq('arquivo_hash', requestedHash)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (csvPreviewHash !== requestedHash) return;
+
+  csvDuplicateCheckPending = false;
+  if (error) {
+    console.warn('Nao foi possivel verificar se este CSV ja foi aplicado.', error);
+  } else {
+    csvDuplicateLot = data;
+    renderCsvDuplicateWarning();
+  }
+
+  updateCsvApplyState();
+}
+
+function handleCsvMovementDateChange() {
+  updateCsvApplyState();
+}
+
 function clearCsvPreview() {
   csvPreviewRows = [];
   csvPreviewApplied = false;
   csvPreviewFileName = null;
   csvPreviewHash = null;
+  csvDuplicateLot = null;
+  csvDuplicateCheckPending = false;
   const input = document.getElementById('csv-baixa-input');
   const summaryEl = document.getElementById('csv-preview-summary');
   const wrapEl = document.getElementById('csv-preview-table-wrap');
@@ -2482,6 +2557,7 @@ function clearCsvPreview() {
   if (summaryEl) summaryEl.textContent = 'Nenhum arquivo selecionado.';
   if (wrapEl) wrapEl.style.display = 'none';
   if (tbody) tbody.innerHTML = '';
+  renderCsvDuplicateWarning();
   updateCsvApplyState();
 }
 
@@ -2497,6 +2573,9 @@ async function handleCsvPreview(event) {
   csvPreviewApplied = false;
   csvPreviewFileName = file.name;
   csvPreviewHash = null;
+  csvDuplicateLot = null;
+  csvDuplicateCheckPending = false;
+  renderCsvDuplicateWarning();
   const detectedMovementDate = movementDateFromFileName(file.name);
   const movementInput = document.getElementById('csv-movement-date');
   if (detectedMovementDate && movementInput) movementInput.value = detectedMovementDate;
@@ -2582,6 +2661,7 @@ async function handleCsvPreview(event) {
   }
 
   wrapEl.style.display = 'block';
+  await loadCsvDuplicateWarning();
   updateCsvApplyState();
 }
 
@@ -2593,7 +2673,7 @@ async function confirmCsvBaixa() {
   const insufficient = csvPreviewRows.filter(row => row.product && row.afterQty < 0).length;
   const movementDate = document.getElementById('csv-movement-date')?.value || '';
 
-  if (!applicable.length || invalid > 0 || insufficient > 0 || csvPreviewApplied || !movementDate || !csvPreviewHash) {
+  if (!applicable.length || invalid > 0 || insufficient > 0 || csvPreviewApplied || !movementDate || !csvPreviewHash || csvDuplicateCheckPending || csvDuplicateLot) {
     updateCsvApplyState();
     return;
   }
