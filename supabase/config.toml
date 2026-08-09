@@ -1,6 +1,9 @@
 [functions.nuvemshop-oauth]
 verify_jwt = false
 
+[functions.nuvemshop-oauth-iniciar]
+verify_jwt = true
+
 [functions.nuvemshop-lgpd]
 verify_jwt = false
 

@@ -35,6 +35,7 @@ let nuvemshopPilotApplying = false;
 let nuvemshopPilotApplicationLocked = false;
 let nuvemshopPilotWindowBusy = false;
 let nuvemshopPilotWindowTimer = null;
+let nuvemshopOAuthStartBusy = false;
 let productTags = [];
 let productStatusTarget = null;
 let productStatusBusy = false;
@@ -878,6 +879,50 @@ function setNuvemshopConnectionState(state, text) {
   if (connectionText) connectionText.textContent = text;
   if (connectionDot) {
     connectionDot.className = `nuvemshop-connection-dot${state && state !== 'ready' ? ` ${state}` : ''}`;
+  }
+}
+
+async function connectNewNuvemshopStore() {
+  const button = document.getElementById('nuvemshop-connect-btn');
+  const errorElement = document.getElementById('nuvemshop-connect-error');
+  if (nuvemshopOAuthStartBusy || !button || !errorElement) return;
+
+  nuvemshopOAuthStartBusy = true;
+  button.disabled = true;
+  button.textContent = 'Preparando conexao...';
+  errorElement.textContent = '';
+
+  try {
+    const { data, error } = await sb.functions.invoke('nuvemshop-oauth-iniciar', {
+      method: 'POST'
+    });
+    if (error || typeof data?.url !== 'string') {
+      throw new Error('oauth_start_failed');
+    }
+
+    const authorizationUrl = new URL(data.url);
+    const stateValues = authorizationUrl.searchParams.getAll('state');
+    const queryKeys = Array.from(authorizationUrl.searchParams.keys());
+    const validUrl = authorizationUrl.protocol === 'https:'
+      && authorizationUrl.hostname === 'www.nuvemshop.com.br'
+      && authorizationUrl.port === ''
+      && authorizationUrl.username === ''
+      && authorizationUrl.password === ''
+      && authorizationUrl.pathname === '/apps/36716/authorize'
+      && authorizationUrl.hash === ''
+      && stateValues.length === 1
+      && queryKeys.length === 1
+      && queryKeys[0] === 'state'
+      && /^[A-Za-z0-9_-]{43}$/.test(stateValues[0]);
+    if (!validUrl) throw new Error('oauth_start_invalid_url');
+
+    window.location.assign(authorizationUrl.toString());
+  } catch {
+    errorElement.textContent = 'Nao foi possivel iniciar a conexao. Tente novamente.';
+  } finally {
+    nuvemshopOAuthStartBusy = false;
+    button.disabled = false;
+    button.textContent = 'Conectar nova loja';
   }
 }
 
