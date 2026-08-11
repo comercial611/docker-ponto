@@ -25,6 +25,7 @@
   .btn-primary { width: 100%; background: var(--accent); border: none; border-radius: 4px; color: #fff; font-size: 14px; font-weight: 600; padding: 12px; cursor: pointer; margin-top: 8px; transition: opacity .15s; }
   .btn-primary:hover { opacity: .88; }
   .error-msg { color: var(--red); font-size: 13px; margin-top: 10px; text-align: center; }
+  .error-msg.nuvemshop-connect-notice { color: var(--accent); }
 
   #app-screen { display: none; }
   header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 28px; height: 60px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 10; }
