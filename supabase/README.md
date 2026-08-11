@@ -35,6 +35,7 @@ Esta pasta documenta a configuracao de seguranca usada no Supabase de producao.
 29. `29-registrar-baixa-administrativa.sql`
 30. `30-corrigir-baixa-administrativa-created-at.sql`
 31. `31-bloquear-reaplicacao-csv-por-arquivo.sql`
+32. `32-oauth-state-nuvemshop.sql`
 
 ## O que foi protegido
 
@@ -82,7 +83,9 @@ Esta pasta documenta a configuracao de seguranca usada no Supabase de producao.
 - `29-registrar-baixa-administrativa.sql`: cria a funcao atomica usada pela baixa no painel administrativo; estoque, ultima baixa e historico sao gravados juntos ou nada e confirmado.
 - `30-corrigir-baixa-administrativa-created-at.sql`: corrige a ambiguidade de `created_at` na baixa administrativa atomica.
 - `31-bloquear-reaplicacao-csv-por-arquivo.sql`: identifica o CSV pelo hash do arquivo em toda a historico, bloqueia reaplicacao com qualquer data de movimento e preserva a operacao atomica.
-- `functions/nuvemshop-oauth`: conclui a instalacao OAuth e salva o token criptografado, sem exibir a credencial.
+- `32-oauth-state-nuvemshop.sql`: registra somente o hash SHA-256 das tentativas OAuth, limita cada state a dez minutos e uso unico, reserva callbacks atomicamente e conclui a tentativa junto com a conexao na mesma transacao.
+- `functions/nuvemshop-oauth-iniciar`: permite somente a administradores autenticados iniciar uma autorizacao, gera o state no servidor e retorna a URL oficial da Nuvemshop.
+- `functions/nuvemshop-oauth`: exige e consome o state antes de trocar o code, conclui a instalacao por RPC transacional e salva somente o token criptografado, sem exibir a credencial.
 - `functions/nuvemshop-lgpd`: recebe os tres webhooks obrigatorios de privacidade e valida a assinatura da Nuvemshop.
 - `functions/nuvemshop-catalogo`: consulta o catalogo e os locais de estoque da Nuvemshop somente para administradores, sem alterar o estoque externo.
 - `functions/nuvemshop-sincronizacao`: recalcula a previa, verifica as protecoes e aplica um item piloto ou um lote controlado de dois a quinze itens durante uma janela temporaria confirmada; cada escrita e relida e o lote para diante de qualquer falha ou incerteza.
@@ -94,3 +97,15 @@ Esta pasta documenta a configuracao de seguranca usada no Supabase de producao.
 Esses arquivos documentam alteracoes de banco em producao. Antes de rodar qualquer SQL novamente, confira se ele ainda corresponde ao estado atual do Supabase.
 
 O rollback reduz a seguranca e deve ser usado apenas em emergencia.
+
+## Contrato temporal do OAuth e da futura redacao LGPD
+
+- `nuvemshop_oauth_tentativas.criado_em` e gravado pelo banco e identifica quando a autorizacao segura foi iniciada.
+- `consumido_em` registra quando o state foi reservado ou invalidado definitivamente; `falhou_em` registra separadamente quando uma tentativa reservada terminou em falha.
+- Entre tentativas da mesma loja, a precedencia usa a tupla `criado_em` e `ordem`, sendo `ordem` monotonicamente gerada pelo PostgreSQL para desempatar timestamps iguais. Uma autorizacao concluida mais nova impede conclusao posterior de tentativa antiga. Uma tentativa nova que falha antes de atualizar a conexao nao invalida, por si so, uma tentativa anterior ainda valida; nenhuma tentativa pode ultrapassar os dez minutos de validade.
+- `SUPABASE_URL` e a unica origem permitida para construir o redirecionamento final limpo. A URL inicial com `code` e `state` inevitavelmente chega ao callback; a implementacao remove esses parametros da URL final, mas nao controla eventuais logs automaticos da infraestrutura.
+- O cookie temporario do callback transporta somente uma mensagem visual de allowlist fixa. Ele nao autoriza operacoes, nao contem credenciais e e removido depois da leitura valida ou invalida.
+- A migration 32 nao depende de `nuvemshop_conexoes.redigida_em`, pois essa coluna ainda nao integra a sequencia oficial.
+- A futura migration 33 de redacao LGPD devera adaptar a RPC `concluir_tentativa_oauth_nuvemshop`: sob o mesmo lock e na mesma transacao, somente tentativa com `criado_em > redigida_em` podera reinstalar uma conexao redigida.
+- Tentativa criada antes ou no mesmo instante da redacao devera falhar sem gravar token nem limpar a redacao.
+- A migration LGPD experimental existente em outra branch devera ser renumerada para um numero posterior a 32 e adaptada depois das migrations 29, 30, 31 e 32.

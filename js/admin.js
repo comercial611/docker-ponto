@@ -35,6 +35,10 @@ let nuvemshopPilotApplying = false;
 let nuvemshopPilotApplicationLocked = false;
 let nuvemshopPilotWindowBusy = false;
 let nuvemshopPilotWindowTimer = null;
+let nuvemshopOAuthStartBusy = false;
+const NUVEMSHOP_OAUTH_FINAL_PARAM = 'nuvemshop_oauth';
+const NUVEMSHOP_OAUTH_FINAL_VALUE = 'finalizado';
+const NUVEMSHOP_OAUTH_FINAL_MESSAGE = 'O retorno da autorizacao da Nuvemshop foi processado. Verifique o estado da conexao no painel.';
 let productTags = [];
 let productStatusTarget = null;
 let productStatusBusy = false;
@@ -114,6 +118,28 @@ async function enterAdminArea() {
 function showApp() {
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('app-screen').style.display = 'block';
+  showNuvemshopOAuthFinalMessage();
+}
+
+function showNuvemshopOAuthFinalMessage() {
+  const url = new URL(window.location.href);
+  const values = url.searchParams.getAll(NUVEMSHOP_OAUTH_FINAL_PARAM);
+  const queryKeys = Array.from(url.searchParams.keys());
+  if (
+    values.length !== 1
+    || values[0] !== NUVEMSHOP_OAUTH_FINAL_VALUE
+    || queryKeys.length !== 1
+    || queryKeys[0] !== NUVEMSHOP_OAUTH_FINAL_PARAM
+  ) return;
+
+  const errorElement = document.getElementById('nuvemshop-connect-error');
+  if (errorElement) {
+    errorElement.classList.add('nuvemshop-connect-notice');
+    errorElement.textContent = NUVEMSHOP_OAUTH_FINAL_MESSAGE;
+  }
+
+  url.searchParams.delete(NUVEMSHOP_OAUTH_FINAL_PARAM);
+  history.replaceState(history.state, document.title, `${url.pathname}${url.search}${url.hash}`);
 }
 
 async function init() {
@@ -878,6 +904,51 @@ function setNuvemshopConnectionState(state, text) {
   if (connectionText) connectionText.textContent = text;
   if (connectionDot) {
     connectionDot.className = `nuvemshop-connection-dot${state && state !== 'ready' ? ` ${state}` : ''}`;
+  }
+}
+
+async function connectNewNuvemshopStore() {
+  const button = document.getElementById('nuvemshop-connect-btn');
+  const errorElement = document.getElementById('nuvemshop-connect-error');
+  if (nuvemshopOAuthStartBusy || !button || !errorElement) return;
+
+  nuvemshopOAuthStartBusy = true;
+  button.disabled = true;
+  button.textContent = 'Preparando conexao...';
+  errorElement.classList.remove('nuvemshop-connect-notice');
+  errorElement.textContent = '';
+
+  try {
+    const { data, error } = await sb.functions.invoke('nuvemshop-oauth-iniciar', {
+      method: 'POST'
+    });
+    if (error || typeof data?.url !== 'string') {
+      throw new Error('oauth_start_failed');
+    }
+
+    const authorizationUrl = new URL(data.url);
+    const stateValues = authorizationUrl.searchParams.getAll('state');
+    const queryKeys = Array.from(authorizationUrl.searchParams.keys());
+    const validUrl = authorizationUrl.protocol === 'https:'
+      && authorizationUrl.hostname === 'www.nuvemshop.com.br'
+      && authorizationUrl.port === ''
+      && authorizationUrl.username === ''
+      && authorizationUrl.password === ''
+      && authorizationUrl.pathname === '/apps/36716/authorize'
+      && authorizationUrl.hash === ''
+      && stateValues.length === 1
+      && queryKeys.length === 1
+      && queryKeys[0] === 'state'
+      && /^[A-Za-z0-9_-]{43}$/.test(stateValues[0]);
+    if (!validUrl) throw new Error('oauth_start_invalid_url');
+
+    window.location.assign(authorizationUrl.toString());
+  } catch {
+    errorElement.textContent = 'Nao foi possivel iniciar a conexao. Tente novamente.';
+  } finally {
+    nuvemshopOAuthStartBusy = false;
+    button.disabled = false;
+    button.textContent = 'Conectar nova loja';
   }
 }
 
