@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Estoque - Administração</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<link rel="stylesheet" href="css/admin.css?v=20260810-oauth-final-admin-2">
+<link rel="stylesheet" href="css/admin.css?v=20260811-nuvemshop-multiloja-2">
 </head>
 <body>
 
@@ -294,6 +294,13 @@
         <div class="nuvemshop-connection"><span class="nuvemshop-connection-dot"></span> <span id="nuvemshop-connection-text">Nuvemshop somente leitura</span></div>
       </div>
       <div class="filters-row">
+        <label class="form-field">
+          <span>Loja Nuvemshop</span>
+          <select class="filter-select" id="nuvemshop-store-select" onchange="handleNuvemshopStoreChange()" aria-label="Loja Nuvemshop para consulta">
+            <option value="3514029" selected>3514029 — loja atual</option>
+            <option value="6696910">6696910 — loja nova</option>
+          </select>
+        </label>
         <button type="button" class="btn-cancel" id="nuvemshop-connect-btn" onclick="connectNewNuvemshopStore()">Conectar nova loja</button>
         <button class="btn-cancel" id="nuvemshop-preview-btn" onclick="openNuvemshopSyncPreview()">Gerar previa</button>
         <button class="btn-save" id="nuvemshop-refresh-btn" onclick="loadNuvemshopCatalog(true)">Atualizar catalogo</button>
@@ -735,6 +742,6 @@
 <script src="js/produto-busca.js?v=20260725-tags-fornecedor-1"></script>
 <script src="js/admin-nuvemshop-auditoria.js?v=20260724-admin-auditoria-1"></script>
 <script src="js/admin-notificacoes.js?v=20260725-seguranca-notificacoes-1"></script>
-<script src="js/admin.js?v=20260810-oauth-final-admin-2"></script>
+<script src="js/admin.js?v=20260811-nuvemshop-multiloja-2"></script>
 </body>
 </html>
