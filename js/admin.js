@@ -21,6 +21,12 @@ let nuvemshopCatalogPage = 1;
 let nuvemshopCatalogPageSize = 50;
 let nuvemshopStoreId = null;
 let nuvemshopStockLocation = null;
+let nuvemshopCatalogRequestId = 0;
+const NUVEMSHOP_STORES = Object.freeze([
+  Object.freeze({ id: 3514029, label: 'loja atual' }),
+  Object.freeze({ id: 6696910, label: 'loja nova' })
+]);
+const NUVEMSHOP_DEFAULT_STORE_ID = 3514029;
 let nuvemshopManualRow = null;
 let nuvemshopManualVoltage = null;
 let nuvemshopPreviewGenerated = false;
@@ -907,6 +913,85 @@ function setNuvemshopConnectionState(state, text) {
   }
 }
 
+function selectedNuvemshopStoreId() {
+  const selectedStoreId = Number(document.getElementById('nuvemshop-store-select')?.value);
+  return NUVEMSHOP_STORES.some(store => store.id === selectedStoreId)
+    ? selectedStoreId
+    : null;
+}
+
+function hasConfirmedNuvemshopStockLocation() {
+  const localId = nuvemshopStockLocation?.local?.id;
+  return nuvemshopStockLocation?.status === 'unico' &&
+    localId != null &&
+    String(localId).trim() !== '';
+}
+
+function updateNuvemshopPreviewAvailability() {
+  const previewButton = document.getElementById('nuvemshop-preview-btn');
+  if (!previewButton) return;
+
+  const canGeneratePreview = nuvemshopCatalogLoaded &&
+    !nuvemshopCatalogLoading &&
+    hasConfirmedNuvemshopStockLocation();
+  previewButton.disabled = !canGeneratePreview;
+  previewButton.title = canGeneratePreview
+    ? ''
+    : 'Confirme o local de estoque desta loja antes de gerar a previa.';
+}
+
+function resetNuvemshopCatalogForStoreChange() {
+  nuvemshopCatalogRequestId += 1;
+  nuvemshopCatalogRows = [];
+  nuvemshopCatalogLoaded = false;
+  nuvemshopCatalogLoading = false;
+  nuvemshopCatalogError = false;
+  nuvemshopCatalogPage = 1;
+  nuvemshopStoreId = null;
+  nuvemshopStockLocation = null;
+  nuvemshopPreviewGenerated = false;
+  nuvemshopPreviewGeneratedAt = null;
+  nuvemshopServerSimulation = null;
+  nuvemshopPilotReadiness = null;
+  nuvemshopPilotSelectedItemId = null;
+  nuvemshopBatchSelectedItemIds = [];
+  nuvemshopPilotApplicationLocked = false;
+
+  const preview = document.getElementById('nuvemshop-sync-preview');
+  const tableWrap = document.getElementById('nuvemshop-table-wrap');
+  const pagination = document.getElementById('nuvemshop-pagination');
+  const message = document.getElementById('nuvemshop-message');
+  if (preview) preview.style.display = 'none';
+  if (tableWrap) tableWrap.style.display = 'none';
+  if (pagination) pagination.style.display = 'none';
+  if (message) {
+    message.className = 'nuvemshop-message loading';
+    message.textContent = 'Selecione uma loja para consultar o catalogo.';
+    message.style.display = 'flex';
+  }
+  ['nuvemshop-stat-local', 'nuvemshop-stat-remote', 'nuvemshop-stat-matched', 'nuvemshop-stat-review']
+    .forEach(id => {
+      const element = document.getElementById(id);
+      if (element) element.textContent = '-';
+    });
+  const listTitle = document.getElementById('nuvemshop-list-title');
+  if (listTitle) listTitle.textContent = 'Catalogo externo';
+  updateNuvemshopPreviewAvailability();
+  renderNuvemshopWorkflow();
+}
+
+function handleNuvemshopStoreChange() {
+  const select = document.getElementById('nuvemshop-store-select');
+  const storeId = selectedNuvemshopStoreId();
+  if (!storeId) {
+    if (select) select.value = String(NUVEMSHOP_DEFAULT_STORE_ID);
+    return;
+  }
+
+  resetNuvemshopCatalogForStoreChange();
+  loadNuvemshopCatalog(true);
+}
+
 async function connectNewNuvemshopStore() {
   const button = document.getElementById('nuvemshop-connect-btn');
   const errorElement = document.getElementById('nuvemshop-connect-error');
@@ -964,7 +1049,8 @@ function setNuvemshopWorkflowStep(id, state, status) {
 
 function renderNuvemshopWorkflow() {
   const catalogReady = nuvemshopCatalogLoaded;
-  const previewReady = catalogReady && nuvemshopPreviewGenerated;
+  const locationConfirmed = catalogReady && hasConfirmedNuvemshopStockLocation();
+  const previewReady = locationConfirmed && nuvemshopPreviewGenerated;
   const validationReady = previewReady && Boolean(nuvemshopServerSimulation?.auditoria_id);
   const pilotChecked = validationReady && Boolean(nuvemshopPilotReadiness);
   const previewCount = previewReady ? buildNuvemshopSyncPreviewRows().length : 0;
@@ -981,8 +1067,12 @@ function renderNuvemshopWorkflow() {
 
   setNuvemshopWorkflowStep(
     'preview',
-    previewReady ? 'complete' : catalogReady ? 'current' : 'pending',
-    previewReady ? `${previewCount} vinculos` : catalogReady ? 'Pronta para gerar' : 'Pendente'
+    previewReady ? 'complete' : locationConfirmed ? 'current' : 'pending',
+    previewReady
+      ? `${previewCount} vinculos`
+      : locationConfirmed
+        ? 'Pronta para gerar'
+        : catalogReady ? 'Aguardando local confirmado' : 'Pendente'
   );
   setNuvemshopWorkflowStep(
     'validation',
@@ -1001,7 +1091,19 @@ function renderNuvemshopWorkflow() {
 }
 
 async function loadNuvemshopCatalog(force = false) {
-  if (nuvemshopCatalogLoaded && !force) return;
+  const selectedStoreId = selectedNuvemshopStoreId();
+  if (!selectedStoreId) {
+    const message = document.getElementById('nuvemshop-message');
+    if (message) {
+      message.className = 'nuvemshop-message error';
+      message.textContent = 'Selecione uma loja Nuvemshop valida para consultar o catalogo.';
+      message.style.display = 'flex';
+    }
+    return;
+  }
+  if (nuvemshopCatalogLoaded && nuvemshopStoreId === selectedStoreId && !force) return;
+
+  const requestId = ++nuvemshopCatalogRequestId;
   const button = document.getElementById('nuvemshop-refresh-btn');
   const message = document.getElementById('nuvemshop-message');
   const tableWrap = document.getElementById('nuvemshop-table-wrap');
@@ -1019,26 +1121,32 @@ async function loadNuvemshopCatalog(force = false) {
   nuvemshopServerSimulation = null;
   nuvemshopPilotReadiness = null;
   nuvemshopPilotSelectedItemId = null;
+  updateNuvemshopPreviewAvailability();
   renderNuvemshopWorkflow();
 
   try {
-    const { data, error } = await sb.functions.invoke('nuvemshop-catalogo', { method: 'GET' });
+    const { data, error } = await sb.functions.invoke(`nuvemshop-catalogo?store_id=${selectedStoreId}`, { method: 'GET' });
+    if (requestId !== nuvemshopCatalogRequestId) return;
     if (error) throw error;
-    if (!data?.store_id) throw new Error('Loja Nuvemshop nao identificada.');
+    if (Number(data?.store_id) !== selectedStoreId) {
+      throw new Error('A consulta retornou uma loja Nuvemshop inesperada.');
+    }
     const linksResult = await sb.from('nuvemshop_vinculos')
       .select('*')
-      .eq('store_id', data.store_id)
+      .eq('store_id', selectedStoreId)
       .eq('ativo', true);
+    if (requestId !== nuvemshopCatalogRequestId) return;
     if (linksResult.error) throw linksResult.error;
     if (!Array.isArray(data?.produtos)) throw new Error('Catalogo em formato inesperado.');
 
-    nuvemshopStoreId = data.store_id;
+    nuvemshopStoreId = selectedStoreId;
     nuvemshopStockLocation = data.estoque_local || null;
     nuvemshopCatalogRows = flattenNuvemshopCatalog(data.produtos, linksResult.data || []);
     nuvemshopCatalogLoaded = true;
     if (nuvemshopPreviewGenerated) nuvemshopPreviewGeneratedAt = new Date();
     renderNuvemshopCatalog();
   } catch (error) {
+    if (requestId !== nuvemshopCatalogRequestId) return;
     console.error('Falha ao consultar Nuvemshop', error);
     nuvemshopCatalogError = true;
     setNuvemshopConnectionState('error', 'Falha ao consultar a Nuvemshop');
@@ -1046,9 +1154,11 @@ async function loadNuvemshopCatalog(force = false) {
     message.textContent = 'Nao foi possivel consultar o catalogo. Confira os logs da funcao nuvemshop-catalogo.';
     message.style.display = 'flex';
   } finally {
+    if (requestId !== nuvemshopCatalogRequestId) return;
     nuvemshopCatalogLoading = false;
     button.disabled = false;
     button.textContent = 'Atualizar catalogo';
+    updateNuvemshopPreviewAvailability();
     renderNuvemshopWorkflow();
   }
 }
@@ -1088,6 +1198,7 @@ function renderNuvemshopCatalog() {
   } else {
     setNuvemshopConnectionState('warning', 'Somente leitura | Local de estoque ainda nao confirmado');
   }
+  updateNuvemshopPreviewAvailability();
   renderNuvemshopWorkflow();
   if (nuvemshopPreviewGenerated) renderNuvemshopSyncPreview();
 
@@ -1233,8 +1344,14 @@ function buildNuvemshopSyncPreviewRows() {
 }
 
 async function openNuvemshopSyncPreview() {
-  if (!nuvemshopCatalogLoaded) await loadNuvemshopCatalog();
-  if (!nuvemshopCatalogLoaded) return;
+  const selectedStoreId = selectedNuvemshopStoreId();
+  if (!selectedStoreId) return;
+  if (!nuvemshopCatalogLoaded || nuvemshopStoreId !== selectedStoreId) await loadNuvemshopCatalog();
+  if (!nuvemshopCatalogLoaded || nuvemshopStoreId !== selectedStoreId) return;
+  if (!hasConfirmedNuvemshopStockLocation()) {
+    alert('O local de estoque precisa estar confirmado antes de gerar a previa.');
+    return;
+  }
 
   nuvemshopPreviewGenerated = true;
   nuvemshopPreviewGeneratedAt = new Date();
@@ -1277,7 +1394,7 @@ function renderNuvemshopSyncPreview() {
   const pilotButton = document.getElementById('nuvemshop-pilot-open');
   const batchButton = document.getElementById('nuvemshop-batch-open');
   const validationText = document.getElementById('nuvemshop-preview-validation');
-  const canSimulate = nuvemshopStockLocation?.status === 'unico' && allRows.length > 0;
+  const canSimulate = hasConfirmedNuvemshopStockLocation() && allRows.length > 0;
   simulationButton.disabled = !canSimulate;
   pilotButton.disabled = !nuvemshopServerSimulation;
   batchButton.disabled = !nuvemshopServerSimulation;
@@ -1326,7 +1443,7 @@ function openNuvemshopSimulationModal() {
     alert('Gere uma previa com produtos vinculados antes de validar.');
     return;
   }
-  if (nuvemshopStockLocation?.status !== 'unico') {
+  if (!hasConfirmedNuvemshopStockLocation()) {
     alert('O local de estoque precisa estar confirmado antes da validacao.');
     return;
   }
