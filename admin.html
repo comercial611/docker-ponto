@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Estoque - Administração</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<link rel="stylesheet" href="css/admin.css?v=20260811-nuvemshop-multiloja-2">
+<link rel="stylesheet" href="css/admin.css?v=20260814-vinculos-auditados-1">
 </head>
 <body>
 
@@ -423,6 +423,21 @@
       </div>
     </div>
 
+    <section class="nuvemshop-broken-links" id="nuvemshop-broken-links" style="display:none" aria-labelledby="nuvemshop-broken-links-title">
+      <div class="section-header">
+        <div>
+          <div class="section-title" id="nuvemshop-broken-links-title">Vinculos nao localizados no catalogo</div>
+          <div class="nuvemshop-audit-subtitle">A desativacao so ocorre depois que o servidor confirma a ausencia na loja selecionada.</div>
+        </div>
+      </div>
+      <div class="table-wrap nuvemshop-table-scroll nuvemshop-broken-links-scroll">
+        <table class="nuvemshop-audit-table">
+          <thead><tr><th>Loja</th><th>Produto local</th><th>Produto/variante externa</th><th>Motivo</th><th>Acao</th></tr></thead>
+          <tbody id="nuvemshop-broken-links-tbody"></tbody>
+        </table>
+      </div>
+    </section>
+
     <section class="nuvemshop-audit-section" aria-labelledby="nuvemshop-audit-title">
       <div class="section-header">
         <div>
@@ -688,6 +703,24 @@
   </div>
 </div>
 
+<!-- MODAL DESATIVACAO AUDITADA DE VINCULO NUVEMSHOP -->
+<div class="modal-overlay" id="nuvemshop-unlink-modal" onclick="if (event.target === this) closeNuvemshopLinkDeactivationModal()" aria-hidden="true">
+  <div class="modal nuvemshop-unlink-modal" role="dialog" aria-modal="true" aria-labelledby="nuvemshop-unlink-title">
+    <div class="modal-title" id="nuvemshop-unlink-title">Desativar vinculo</div>
+    <div class="nuvemshop-unlink-description" id="nuvemshop-unlink-description"></div>
+    <div class="nuvemshop-unlink-details" id="nuvemshop-unlink-details"></div>
+    <div class="form-field" id="nuvemshop-unlink-reason-wrap">
+      <label for="nuvemshop-unlink-reason">Motivo da desativacao manual</label>
+      <textarea id="nuvemshop-unlink-reason" rows="3" maxlength="500" placeholder="Descreva por que este vinculo nao sera mais controlado." oninput="updateNuvemshopLinkDeactivationButton()"></textarea>
+    </div>
+    <div class="baixa-error" id="nuvemshop-unlink-error" role="alert" aria-live="polite"></div>
+    <div class="nuvemshop-manual-actions">
+      <button class="btn-save" id="nuvemshop-unlink-confirm" onclick="confirmNuvemshopLinkDeactivation()">Confirmar desativacao</button>
+      <button class="btn-cancel" id="nuvemshop-unlink-cancel" onclick="closeNuvemshopLinkDeactivationModal()">Cancelar</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL EXCLUIR VENDEDOR -->
 <div class="modal-overlay" id="delete-vendedor-modal">
   <div class="modal">
@@ -742,6 +775,6 @@
 <script src="js/produto-busca.js?v=20260725-tags-fornecedor-1"></script>
 <script src="js/admin-nuvemshop-auditoria.js?v=20260724-admin-auditoria-1"></script>
 <script src="js/admin-notificacoes.js?v=20260725-seguranca-notificacoes-1"></script>
-<script src="js/admin.js?v=20260811-nuvemshop-multiloja-2"></script>
+<script src="js/admin.js?v=20260814-vinculos-auditados-1"></script>
 </body>
 </html>

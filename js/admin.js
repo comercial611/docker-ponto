@@ -14,6 +14,9 @@ const csvLotsPageSize = 5;
 let csvLotsTotal = 0;
 const csvExpandedLots = new Set();
 let nuvemshopCatalogRows = [];
+let nuvemshopRemoteProducts = [];
+let nuvemshopActiveLinks = [];
+let nuvemshopBrokenLinks = [];
 let nuvemshopCatalogLoaded = false;
 let nuvemshopCatalogLoading = false;
 let nuvemshopCatalogError = false;
@@ -42,6 +45,9 @@ let nuvemshopPilotApplicationLocked = false;
 let nuvemshopPilotWindowBusy = false;
 let nuvemshopPilotWindowTimer = null;
 let nuvemshopOAuthStartBusy = false;
+let nuvemshopLinkDeactivationTarget = null;
+let nuvemshopLinkDeactivationBusy = false;
+let nuvemshopLinkDeactivationPreviousFocus = null;
 const NUVEMSHOP_OAUTH_FINAL_PARAM = 'nuvemshop_oauth';
 const NUVEMSHOP_OAUTH_FINAL_VALUE = 'finalizado';
 const NUVEMSHOP_OAUTH_FINAL_MESSAGE = 'O retorno da autorizacao da Nuvemshop foi processado. Verifique o estado da conexao no painel.';
@@ -913,6 +919,74 @@ function setNuvemshopConnectionState(state, text) {
   }
 }
 
+function isPositiveNuvemshopId(value) {
+  return Number.isSafeInteger(value) && value > 0;
+}
+
+function buildNuvemshopBrokenLinks(remoteProducts, links) {
+  const remoteProductsById = new Map();
+  (Array.isArray(remoteProducts) ? remoteProducts : []).forEach(product => {
+    const productId = Number(product?.id);
+    if (isPositiveNuvemshopId(productId)) remoteProductsById.set(productId, product);
+  });
+
+  return (Array.isArray(links) ? links : []).flatMap(link => {
+    const linkId = Number(link?.id);
+    const storeId = Number(link?.store_id);
+    const externalProductId = Number(link?.nuvemshop_produto_id);
+    const externalVariantId = link?.nuvemshop_variante_id == null
+      ? null
+      : Number(link.nuvemshop_variante_id);
+    if (
+      !isPositiveNuvemshopId(linkId)
+      || !isPositiveNuvemshopId(storeId)
+      || !isPositiveNuvemshopId(externalProductId)
+      || (externalVariantId !== null && !isPositiveNuvemshopId(externalVariantId))
+    ) return [];
+
+    const remoteProduct = remoteProductsById.get(externalProductId);
+    if (!remoteProduct) {
+      return [{
+        linkId,
+        storeId,
+        produtoId: Number(link.produto_id),
+        externalProductId,
+        externalVariantId,
+        reason: 'Produto externo nao localizado no catalogo.',
+      }];
+    }
+    if (externalVariantId === null) return [];
+
+    const variants = Array.isArray(remoteProduct.variants) ? remoteProduct.variants : [];
+    const variantExists = variants.some(variant => Number(variant?.id) === externalVariantId);
+    return variantExists ? [] : [{
+      linkId,
+      storeId,
+      produtoId: Number(link.produto_id),
+      externalProductId,
+      externalVariantId,
+      reason: 'Variante externa nao localizada no catalogo.',
+    }];
+  });
+}
+
+function rebuildNuvemshopCatalogRows() {
+  nuvemshopCatalogRows = flattenNuvemshopCatalog(nuvemshopRemoteProducts, nuvemshopActiveLinks);
+  nuvemshopBrokenLinks = buildNuvemshopBrokenLinks(nuvemshopRemoteProducts, nuvemshopActiveLinks);
+}
+
+function clearNuvemshopPreviewAfterLinkChange() {
+  nuvemshopPreviewGenerated = false;
+  nuvemshopPreviewGeneratedAt = null;
+  nuvemshopServerSimulation = null;
+  nuvemshopPilotReadiness = null;
+  nuvemshopPilotSelectedItemId = null;
+  nuvemshopBatchSelectedItemIds = [];
+  nuvemshopPilotApplicationLocked = false;
+  const preview = document.getElementById('nuvemshop-sync-preview');
+  if (preview) preview.style.display = 'none';
+}
+
 function selectedNuvemshopStoreId() {
   const selectedStoreId = Number(document.getElementById('nuvemshop-store-select')?.value);
   return NUVEMSHOP_STORES.some(store => store.id === selectedStoreId)
@@ -943,6 +1017,9 @@ function updateNuvemshopPreviewAvailability() {
 function resetNuvemshopCatalogForStoreChange() {
   nuvemshopCatalogRequestId += 1;
   nuvemshopCatalogRows = [];
+  nuvemshopRemoteProducts = [];
+  nuvemshopActiveLinks = [];
+  nuvemshopBrokenLinks = [];
   nuvemshopCatalogLoaded = false;
   nuvemshopCatalogLoading = false;
   nuvemshopCatalogError = false;
@@ -960,10 +1037,12 @@ function resetNuvemshopCatalogForStoreChange() {
   const preview = document.getElementById('nuvemshop-sync-preview');
   const tableWrap = document.getElementById('nuvemshop-table-wrap');
   const pagination = document.getElementById('nuvemshop-pagination');
+  const brokenLinks = document.getElementById('nuvemshop-broken-links');
   const message = document.getElementById('nuvemshop-message');
   if (preview) preview.style.display = 'none';
   if (tableWrap) tableWrap.style.display = 'none';
   if (pagination) pagination.style.display = 'none';
+  if (brokenLinks) brokenLinks.style.display = 'none';
   if (message) {
     message.className = 'nuvemshop-message loading';
     message.textContent = 'Selecione uma loja para consultar o catalogo.';
@@ -1141,7 +1220,9 @@ async function loadNuvemshopCatalog(force = false) {
 
     nuvemshopStoreId = selectedStoreId;
     nuvemshopStockLocation = data.estoque_local || null;
-    nuvemshopCatalogRows = flattenNuvemshopCatalog(data.produtos, linksResult.data || []);
+    nuvemshopRemoteProducts = data.produtos;
+    nuvemshopActiveLinks = linksResult.data || [];
+    rebuildNuvemshopCatalogRows();
     nuvemshopCatalogLoaded = true;
     if (nuvemshopPreviewGenerated) nuvemshopPreviewGeneratedAt = new Date();
     renderNuvemshopCatalog();
@@ -1208,6 +1289,7 @@ function renderNuvemshopCatalog() {
   const pagination = document.getElementById('nuvemshop-pagination');
   message.style.display = 'none';
   tableWrap.style.display = 'block';
+  renderNuvemshopBrokenLinks();
 
   if (!filtered.length) {
     tbody.innerHTML = '<tr><td colspan="8" class="empty-state">Nenhum item encontrado para este filtro.</td></tr>';
@@ -1241,8 +1323,9 @@ function renderNuvemshopCatalog() {
     const remoteStock = row.remoteStock == null ? 'Ilimitado' : row.remoteStock;
     const localStock = row.localStock == null ? '-' : row.localStock;
     const needsVoltage = row.localProduct?.tem_voltagem && !row.linkVoltage;
-    const action = row.status === 'linked'
-      ? `<div class="nuvemshop-linked-actions"><div><span class="nuvemshop-link-confirmed">Confirmado</span><div class="nuvemshop-link-units">${escapeHtml(row.unitsPerSale)} un. por venda</div></div><button class="nuvemshop-unlink-btn" id="nuvemshop-unlink-${row.savedLinkId}" onclick="unlinkNuvemshopLink(${row.productId}, ${row.variantId ?? 'null'})">Desfazer</button></div>`
+    const savedLinkId = Number(row.savedLinkId);
+    const action = row.status === 'linked' && isPositiveNuvemshopId(savedLinkId)
+      ? `<div class="nuvemshop-linked-actions"><div><span class="nuvemshop-link-confirmed">Confirmado</span><div class="nuvemshop-link-units">${escapeHtml(row.unitsPerSale)} un. por venda</div></div><button class="nuvemshop-unlink-btn" id="nuvemshop-unlink-${savedLinkId}" onclick="openNuvemshopLinkDeactivationModal(${savedLinkId}, 'manual', this)">Desativar vinculo</button></div>`
       : row.status === 'matched' && !needsVoltage
         ? `<button class="nuvemshop-link-btn" id="nuvemshop-link-${row.productId}-${row.variantId || 'base'}" onclick="confirmNuvemshopLink(${row.productId}, ${row.variantId ?? 'null'})">Confirmar vinculo</button>`
         : `<button class="nuvemshop-manual-btn" onclick="openManualNuvemshopLink(${row.productId}, ${row.variantId ?? 'null'})">Vincular manualmente</button>`;
@@ -1258,6 +1341,45 @@ function renderNuvemshopCatalog() {
       <td>${action}</td>
     </tr>`;
   }).join('');
+}
+
+function renderNuvemshopBrokenLinks() {
+  const section = document.getElementById('nuvemshop-broken-links');
+  const tbody = document.getElementById('nuvemshop-broken-links-tbody');
+  if (!section || !tbody) return;
+
+  const selectedStoreId = selectedNuvemshopStoreId();
+  const rows = nuvemshopBrokenLinks.filter(link => link.storeId === selectedStoreId);
+  section.style.display = rows.length ? 'block' : 'none';
+  tbody.replaceChildren();
+  if (!rows.length) return;
+
+  rows.forEach(link => {
+    const localProduct = products.find(product => Number(product.id) === link.produtoId);
+    const store = NUVEMSHOP_STORES.find(item => item.id === link.storeId);
+    const tr = document.createElement('tr');
+    const storeCell = document.createElement('td');
+    const localCell = document.createElement('td');
+    const remoteCell = document.createElement('td');
+    const reasonCell = document.createElement('td');
+    const actionCell = document.createElement('td');
+    const button = document.createElement('button');
+
+    storeCell.textContent = `${link.storeId} — ${store?.label || 'loja selecionada'}`;
+    localCell.textContent = localProduct
+      ? `${localProduct.nome} (ID ${localProduct.id})`
+      : `Produto local ID ${link.produtoId}`;
+    remoteCell.textContent = `Produto ${link.externalProductId}${link.externalVariantId === null ? '' : ` | Variante ${link.externalVariantId}`}`;
+    reasonCell.className = 'nuvemshop-broken-reason';
+    reasonCell.textContent = link.reason;
+    button.type = 'button';
+    button.className = 'nuvemshop-unlink-btn';
+    button.textContent = 'Desativar vinculo quebrado';
+    button.addEventListener('click', () => openNuvemshopLinkDeactivationModal(link.linkId, 'quebrado', button));
+    actionCell.append(button);
+    tr.append(storeCell, localCell, remoteCell, reasonCell, actionCell);
+    tbody.append(tr);
+  });
 }
 
 function handleNuvemshopCatalogFilters() {
@@ -2176,63 +2298,156 @@ function findNuvemshopCatalogRow(productId, variantId) {
   );
 }
 
-function restoreAutomaticNuvemshopMatch(row) {
-  const candidates = findExactLocalCandidates({ sku: row.sku, barcode: row.barcode });
-  const localProduct = candidates.length === 1 ? candidates[0] : null;
-  const inferredVoltage = inferVoltage(row.variantLabel) || inferVoltage(row.remoteName);
-  const localVoltage = localProduct?.tem_voltagem ? inferredVoltage : null;
-
-  row.status = candidates.length === 1 ? 'matched' : candidates.length > 1 ? 'ambiguous' : 'unmatched';
-  row.localProduct = localProduct;
-  row.candidates = candidates;
-  row.linkVoltage = localVoltage;
-  row.localStock = mappedLocalStock(localProduct, localVoltage);
-  row.savedLinkId = null;
-  row.unitsSuggestion = inferUnitsPerSale(row);
-  row.unitsPerSale = row.unitsSuggestion.value;
+function findActiveNuvemshopLink(linkId, storeId) {
+  const normalizedLinkId = Number(linkId);
+  const normalizedStoreId = Number(storeId);
+  if (!isPositiveNuvemshopId(normalizedLinkId) || !isPositiveNuvemshopId(normalizedStoreId)) return null;
+  return nuvemshopActiveLinks.find(link =>
+    Number(link.id) === normalizedLinkId &&
+    Number(link.store_id) === normalizedStoreId &&
+    link.ativo === true
+  ) || null;
 }
 
-async function unlinkNuvemshopLink(productId, variantId) {
-  const row = findNuvemshopCatalogRow(productId, variantId);
-  if (!row || row.status !== 'linked' || !row.savedLinkId || !row.localProduct) {
-    alert('Este vinculo nao esta disponivel para ser desfeito.');
+function updateNuvemshopLinkDeactivationButton() {
+  const button = document.getElementById('nuvemshop-unlink-confirm');
+  const reason = document.getElementById('nuvemshop-unlink-reason');
+  if (!button) return;
+  const manual = nuvemshopLinkDeactivationTarget?.action === 'manual';
+  button.disabled = nuvemshopLinkDeactivationBusy || (manual && !reason?.value.trim());
+}
+
+function openNuvemshopLinkDeactivationModal(linkId, action, sourceButton = null) {
+  if (nuvemshopLinkDeactivationBusy || !['manual', 'quebrado'].includes(action)) return;
+  const storeId = selectedNuvemshopStoreId();
+  const link = findActiveNuvemshopLink(linkId, storeId);
+  const remoteProductId = Number(link?.nuvemshop_produto_id);
+  const remoteVariantId = link?.nuvemshop_variante_id == null ? null : Number(link.nuvemshop_variante_id);
+  if (
+    !link ||
+    !isPositiveNuvemshopId(remoteProductId) ||
+    (remoteVariantId !== null && !isPositiveNuvemshopId(remoteVariantId))
+  ) {
+    alert('Este vinculo ativo da loja selecionada nao esta mais disponivel. Consulte o catalogo novamente.');
     return;
   }
 
-  const voltageText = row.linkVoltage ? ` (${row.linkVoltage})` : '';
-  const confirmed = confirm(
-    `Desfazer este vinculo?\n\nNuvemshop: ${row.remoteName} - ${row.variantLabel}\nLocal: ${row.localProduct.nome}${voltageText}\n\nO registro sera desativado. Nenhum estoque sera alterado.`
-  );
-  if (!confirmed) return;
+  const modal = document.getElementById('nuvemshop-unlink-modal');
+  const title = document.getElementById('nuvemshop-unlink-title');
+  const description = document.getElementById('nuvemshop-unlink-description');
+  const details = document.getElementById('nuvemshop-unlink-details');
+  const reasonWrap = document.getElementById('nuvemshop-unlink-reason-wrap');
+  const reason = document.getElementById('nuvemshop-unlink-reason');
+  const errorElement = document.getElementById('nuvemshop-unlink-error');
+  const localProduct = products.find(product => Number(product.id) === Number(link.produto_id));
+  if (!modal || !title || !description || !details || !reasonWrap || !reason || !errorElement) return;
 
-  const linkId = row.savedLinkId;
-  const button = document.getElementById(`nuvemshop-unlink-${linkId}`);
-  if (button) {
-    button.disabled = true;
-    button.textContent = 'Desfazendo...';
+  nuvemshopLinkDeactivationTarget = {
+    action,
+    linkId: Number(link.id),
+    storeId,
+    remoteProductId,
+    remoteVariantId,
+  };
+  nuvemshopLinkDeactivationPreviousFocus = sourceButton instanceof HTMLElement ? sourceButton : document.activeElement;
+  title.textContent = action === 'quebrado' ? 'Desativar vinculo quebrado' : 'Desativar vinculo manualmente';
+  description.textContent = action === 'quebrado'
+    ? 'O servidor vai confirmar na loja selecionada que o produto ou a variante externa nao existe mais. Nenhuma alteracao externa sera feita.'
+    : 'Esta e uma decisao administrativa. Nenhum estoque, preco, CSV ou cadastro sera alterado.';
+  details.textContent = [
+    `Loja: ${storeId}`,
+    `Produto local: ${localProduct ? `${localProduct.nome} (ID ${localProduct.id})` : `ID ${link.produto_id}`}`,
+    `Produto externo: ${remoteProductId}`,
+    `Variante externa: ${remoteVariantId === null ? '-' : remoteVariantId}`,
+  ].join('\n');
+  reason.value = '';
+  reasonWrap.style.display = action === 'manual' ? 'block' : 'none';
+  errorElement.textContent = '';
+  modal.classList.add('open');
+  modal.setAttribute('aria-hidden', 'false');
+  updateNuvemshopLinkDeactivationButton();
+  setTimeout(() => (action === 'manual' ? reason : document.getElementById('nuvemshop-unlink-confirm'))?.focus(), 0);
+}
+
+function closeNuvemshopLinkDeactivationModal() {
+  if (nuvemshopLinkDeactivationBusy) return;
+  const modal = document.getElementById('nuvemshop-unlink-modal');
+  if (modal) {
+    modal.classList.remove('open');
+    modal.setAttribute('aria-hidden', 'true');
+  }
+  const previousFocus = nuvemshopLinkDeactivationPreviousFocus;
+  nuvemshopLinkDeactivationTarget = null;
+  nuvemshopLinkDeactivationPreviousFocus = null;
+  if (previousFocus instanceof HTMLElement && previousFocus.isConnected) previousFocus.focus();
+}
+
+async function confirmNuvemshopLinkDeactivation() {
+  const target = nuvemshopLinkDeactivationTarget;
+  const errorElement = document.getElementById('nuvemshop-unlink-error');
+  const confirmButton = document.getElementById('nuvemshop-unlink-confirm');
+  const cancelButton = document.getElementById('nuvemshop-unlink-cancel');
+  const reason = document.getElementById('nuvemshop-unlink-reason');
+  if (!target || !errorElement || !confirmButton || !cancelButton || nuvemshopLinkDeactivationBusy) return;
+  if (!isPositiveNuvemshopId(target.linkId) || !isPositiveNuvemshopId(target.storeId)) return;
+  if (selectedNuvemshopStoreId() !== target.storeId || !findActiveNuvemshopLink(target.linkId, target.storeId)) {
+    errorElement.textContent = 'O vinculo ou a loja selecionada mudou. Consulte o catalogo novamente.';
+    return;
   }
 
-  const { data, error } = await sb.from('nuvemshop_vinculos')
-    .update({ ativo: false })
-    .eq('id', linkId)
-    .eq('ativo', true)
-    .select('id')
-    .maybeSingle();
+  const manualReason = target.action === 'manual' ? reason?.value.trim() : null;
+  if (target.action === 'manual' && !manualReason) {
+    errorElement.textContent = 'Informe o motivo da desativacao manual.';
+    updateNuvemshopLinkDeactivationButton();
+    return;
+  }
 
-  if (error || !data) {
-    console.error('Falha ao desfazer vinculo Nuvemshop', error);
-    alert(`Nao foi possivel desfazer o vinculo: ${error?.message || 'o registro ativo nao foi encontrado.'}`);
-    if (button) {
-      button.disabled = false;
-      button.textContent = 'Desfazer';
+  nuvemshopLinkDeactivationBusy = true;
+  errorElement.textContent = '';
+  confirmButton.disabled = true;
+  cancelButton.disabled = true;
+  confirmButton.textContent = target.action === 'quebrado' ? 'Confirmando na loja...' : 'Desativando...';
+  let completed = false;
+  let idempotent = false;
+  try {
+    const { data, error } = await sb.functions.invoke('nuvemshop-vinculo-quebrado', {
+      body: {
+        acao: target.action,
+        store_id: target.storeId,
+        vinculo_id: target.linkId,
+        ...(target.action === 'manual' ? { motivo: manualReason } : {}),
+      },
+    });
+    if (error) {
+      const failure = await readNuvemshopFunctionFailure(error, 'Nao foi possivel desativar o vinculo selecionado.');
+      throw new Error(failure.message);
     }
-    return;
+    if (data?.desativado !== true && data?.idempotente !== true) {
+      throw new Error('O servidor retornou uma desativacao de vinculo inesperada.');
+    }
+
+    idempotent = data?.idempotente === true;
+    nuvemshopActiveLinks = nuvemshopActiveLinks.filter(link => Number(link.id) !== target.linkId || Number(link.store_id) !== target.storeId);
+    rebuildNuvemshopCatalogRows();
+    clearNuvemshopPreviewAfterLinkChange();
+    renderNuvemshopCatalog();
+    completed = true;
+  } catch (error) {
+    console.error('Falha no fluxo seguro de desativacao de vinculo.', error);
+    errorElement.textContent = error?.message || 'Nao foi possivel desativar o vinculo selecionado.';
+  } finally {
+    nuvemshopLinkDeactivationBusy = false;
+    cancelButton.disabled = false;
+    confirmButton.textContent = 'Confirmar desativacao';
+    updateNuvemshopLinkDeactivationButton();
   }
 
-  restoreAutomaticNuvemshopMatch(row);
-  if (nuvemshopPreviewGenerated) nuvemshopPreviewGeneratedAt = new Date();
-  renderNuvemshopCatalog();
-  showToast('blue', 'Vinculo desfeito. Nenhum estoque foi alterado.');
+  if (completed) {
+    closeNuvemshopLinkDeactivationModal();
+    showToast('blue', idempotent
+      ? 'O vinculo ja estava desativado. Nenhum estoque foi alterado.'
+      : 'Vinculo desativado com auditoria. Nenhum estoque foi alterado.');
+  }
 }
 
 function manualProductSearchText(product) {
