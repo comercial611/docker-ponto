@@ -36,6 +36,7 @@ Esta pasta documenta a configuracao de seguranca usada no Supabase de producao.
 30. `30-corrigir-baixa-administrativa-created-at.sql`
 31. `31-bloquear-reaplicacao-csv-por-arquivo.sql`
 32. `32-oauth-state-nuvemshop.sql`
+33. `33-desativacao-auditada-vinculos-nuvemshop.sql`
 
 ## O que foi protegido
 
@@ -84,10 +85,12 @@ Esta pasta documenta a configuracao de seguranca usada no Supabase de producao.
 - `30-corrigir-baixa-administrativa-created-at.sql`: corrige a ambiguidade de `created_at` na baixa administrativa atomica.
 - `31-bloquear-reaplicacao-csv-por-arquivo.sql`: identifica o CSV pelo hash do arquivo em toda a historico, bloqueia reaplicacao com qualquer data de movimento e preserva a operacao atomica.
 - `32-oauth-state-nuvemshop.sql`: registra somente o hash SHA-256 das tentativas OAuth, limita cada state a dez minutos e uso unico, reserva callbacks atomicamente e conclui a tentativa junto com a conexao na mesma transacao.
+- `33-desativacao-auditada-vinculos-nuvemshop.sql`: substitui a desativacao direta de vinculos por uma RPC transacional exclusiva do servidor, com auditoria por loja; o navegador deixa de ter permissao de atualizar ou excluir vinculos. A Edge Function confirma a ausencia remota antes do caminho de vinculo quebrado; o caminho manual exige motivo administrativo. Nenhum dos dois altera estoque, CSV, preco, catalogo externo ou outro vinculo.
 - `functions/nuvemshop-oauth-iniciar`: permite somente a administradores autenticados iniciar uma autorizacao, gera o state no servidor e retorna a URL oficial da Nuvemshop.
 - `functions/nuvemshop-oauth`: exige e consome o state antes de trocar o code, conclui a instalacao por RPC transacional e salva somente o token criptografado, sem exibir a credencial.
 - `functions/nuvemshop-lgpd`: recebe os tres webhooks obrigatorios de privacidade e valida a assinatura da Nuvemshop.
 - `functions/nuvemshop-catalogo`: consulta o catalogo e os locais de estoque da Nuvemshop somente para administradores, sem alterar o estoque externo.
+- `functions/nuvemshop-vinculo-quebrado`: exige administrador autenticado e desativa somente o vinculo informado da loja informada. No modo quebrado, confirma por GET que o produto ou a variante nao existe antes da RPC auditada; no modo manual, exige motivo e nao consulta a Nuvemshop.
 - `functions/nuvemshop-sincronizacao`: recalcula a previa, verifica as protecoes e aplica um item piloto ou um lote controlado de dois a quinze itens durante uma janela temporaria confirmada; cada escrita e relida e o lote para diante de qualquer falha ou incerteza.
 - `rollback-segundo-admin-principal.sql`: devolve o login vendas4 ao perfil funcionario em caso de necessidade.
 - `rollback-policies-abertas.sql`: volta para as policies antigas em caso de emergencia.
@@ -106,6 +109,6 @@ O rollback reduz a seguranca e deve ser usado apenas em emergencia.
 - `SUPABASE_URL` e a unica origem permitida para construir o redirecionamento final limpo. A URL inicial com `code` e `state` inevitavelmente chega ao callback; a implementacao remove esses parametros da URL final, mas nao controla eventuais logs automaticos da infraestrutura.
 - O cookie temporario do callback transporta somente uma mensagem visual de allowlist fixa. Ele nao autoriza operacoes, nao contem credenciais e e removido depois da leitura valida ou invalida.
 - A migration 32 nao depende de `nuvemshop_conexoes.redigida_em`, pois essa coluna ainda nao integra a sequencia oficial.
-- A futura migration 33 de redacao LGPD devera adaptar a RPC `concluir_tentativa_oauth_nuvemshop`: sob o mesmo lock e na mesma transacao, somente tentativa com `criado_em > redigida_em` podera reinstalar uma conexao redigida.
+- A futura migration 34 de redacao LGPD devera adaptar a RPC `concluir_tentativa_oauth_nuvemshop`: sob o mesmo lock e na mesma transacao, somente tentativa com `criado_em > redigida_em` podera reinstalar uma conexao redigida.
 - Tentativa criada antes ou no mesmo instante da redacao devera falhar sem gravar token nem limpar a redacao.
-- A migration LGPD experimental existente em outra branch devera ser renumerada para um numero posterior a 32 e adaptada depois das migrations 29, 30, 31 e 32.
+- A migration LGPD experimental existente em outra branch devera ser renumerada para a migration 34 e adaptada depois das migrations 29, 30, 31, 32 e 33.

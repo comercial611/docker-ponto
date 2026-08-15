@@ -9,3 +9,6 @@ verify_jwt = false
 
 [functions.nuvemshop-catalogo]
 verify_jwt = true
+
+[functions.nuvemshop-vinculo-quebrado]
+verify_jwt = true
