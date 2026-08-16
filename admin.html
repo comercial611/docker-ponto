@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Estoque - Administração</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<link rel="stylesheet" href="css/admin.css?v=20260814-vinculos-auditados-1">
+<link rel="stylesheet" href="css/admin.css?v=20260816-dashboard-resolver-1">
 </head>
 <body>
 
@@ -69,6 +69,30 @@
       <div class="stat-card"><div class="stat-label">Sem estoque</div><div class="stat-value red" id="stat-out">—</div></div>
       <div class="stat-card stat-card-inactive"><div class="stat-label">Produtos inativos</div><div class="stat-value" id="stat-inactive">—</div></div>
     </div>
+
+    <section class="resolver-today" aria-labelledby="resolver-today-title">
+      <div class="resolver-today-header">
+        <div>
+          <h2 class="section-title" id="resolver-today-title">Resolver hoje</h2>
+          <p>Prioridades somente leitura para compras, cadastro e conferência operacional.</p>
+        </div>
+        <span class="resolver-today-readonly">Somente leitura</span>
+      </div>
+      <p class="resolver-today-csv-status" id="resolver-today-csv-status" hidden></p>
+      <div class="resolver-today-grid" id="resolver-today-grid" aria-live="polite"></div>
+
+      <div class="resolver-purchase" aria-labelledby="resolver-purchase-title">
+        <div class="resolver-purchase-header">
+          <div>
+            <h3 id="resolver-purchase-title">Sugestão de compra</h3>
+            <p>Produtos ativos repostos somente até o mínimo cadastrado.</p>
+          </div>
+          <span class="resolver-purchase-count" id="resolver-purchase-count">0 itens</span>
+        </div>
+        <div class="resolver-purchase-list" id="resolver-purchase-list"></div>
+      </div>
+    </section>
+
     <div class="section-header">
       <div class="section-title">Produtos</div>
       <div class="filters-row">
@@ -89,7 +113,11 @@
         <input class="search-input" id="search-dash" placeholder="Buscar produto..." oninput="renderDashTable()">
       </div>
     </div>
-    <div class="table-wrap">
+    <div class="dashboard-resolver-filter" id="dashboard-resolver-filter" hidden role="status">
+      <span id="dashboard-resolver-filter-label"></span>
+      <button type="button" class="btn-cancel" onclick="clearDashboardResolverFilter()">Limpar filtro</button>
+    </div>
+    <div class="table-wrap" id="dash-table-wrap" tabindex="-1">
       <table>
         <thead><tr><th>Foto</th><th>Produto</th><th>Cadastro</th><th>Códigos</th><th>Qtd. atual</th><th>Mín.</th><th>Status</th><th>Última baixa</th><th>Ações</th></tr></thead>
         <tbody id="dash-tbody"></tbody>
@@ -775,6 +803,6 @@
 <script src="js/produto-busca.js?v=20260725-tags-fornecedor-1"></script>
 <script src="js/admin-nuvemshop-auditoria.js?v=20260724-admin-auditoria-1"></script>
 <script src="js/admin-notificacoes.js?v=20260725-seguranca-notificacoes-1"></script>
-<script src="js/admin.js?v=20260814-vinculos-auditados-1"></script>
+<script src="js/admin.js?v=20260816-dashboard-resolver-1"></script>
 </body>
 </html>

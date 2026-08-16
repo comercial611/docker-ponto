@@ -13,6 +13,20 @@ let csvLotsPage = 1;
 const csvLotsPageSize = 5;
 let csvLotsTotal = 0;
 const csvExpandedLots = new Set();
+let dashboardLatestCsvLot = null;
+let dashboardFirstCsvPage = [];
+let dashboardResolverFilter = null;
+
+const DASHBOARD_RESOLVER_FILTERS = Object.freeze({
+  incomplete: {
+    label: 'Cadastro incompleto',
+    matches: (product) => !product.codigo_referencia && !product.codigo_interno && !product.sku
+  },
+  without_min: {
+    label: 'Produtos sem mínimo configurado',
+    matches: (product) => (Number(product.minimo) || 0) === 0
+  }
+});
 let nuvemshopCatalogRows = [];
 let nuvemshopRemoteProducts = [];
 let nuvemshopActiveLinks = [];
@@ -182,6 +196,7 @@ async function loadProducts({ throwOnError = false } = {}) {
   renderDashTable();
   renderProdTable();
   updateStats();
+  renderDashboardResolverToday();
   return { data: newList, error: error || null };
 }
 
@@ -291,6 +306,309 @@ function getStatus(p) {
   return { cls: 'ok', label: 'OK' };
 }
 
+function isDashboardResolverIncomplete(product) {
+  return !product?.codigo_referencia && !product?.codigo_interno && !product?.sku;
+}
+
+function dashboardResolverQuantity(product) {
+  const quantity = Number(totalQty(product));
+  return Number.isFinite(quantity) ? quantity : 0;
+}
+
+function buildDashboardResolverData(productList = products, historyList = historyRows, lotList = csvLots, now = new Date()) {
+  const allProducts = Array.isArray(productList) ? productList : [];
+  const activeProducts = allProducts.filter(isProductActive);
+  const latestCsvLot = Array.isArray(lotList) ? lotList[0] || null : null;
+  const sevenDaysAgo = now.getTime() - (7 * 24 * 60 * 60 * 1000);
+
+  const purchaseSuggestions = activeProducts
+    .filter(product => (product.categoria || 'maquina') === 'produto')
+    .map(product => {
+      const quantity = dashboardResolverQuantity(product);
+      const minimum = Number(product.minimo) || 0;
+      return {
+        product,
+        quantity,
+        minimum,
+        suggested: Math.max(minimum - quantity, 0),
+        status: getStatus(product)
+      };
+    })
+    .filter(item => item.minimum > 0 && item.suggested > 0)
+    .sort((a, b) => {
+      if (a.status.cls !== b.status.cls) return a.status.cls === 'out' ? -1 : 1;
+      if (a.suggested !== b.suggested) return b.suggested - a.suggested;
+      return String(a.product.nome || '').localeCompare(String(b.product.nome || ''), 'pt-BR');
+    });
+
+  return {
+    outOfStock: activeProducts.filter(product => getStatus(product).cls === 'out'),
+    belowMinimum: activeProducts.filter(product => getStatus(product).cls === 'low'),
+    incomplete: activeProducts.filter(isDashboardResolverIncomplete),
+    withoutMinimum: activeProducts.filter(product => (Number(product.minimo) || 0) === 0),
+    inactive: allProducts.filter(product => product?.ativo === false),
+    recentManual: (Array.isArray(historyList) ? historyList : []).filter(row => {
+      const date = new Date(row?.created_at).getTime();
+      return historyRowType(row) === 'manual' && Number.isFinite(date) && date >= sevenDaysAgo;
+    }),
+    latestCsvLot,
+    csvNotFound: Math.max(0, Number(latestCsvLot?.nao_encontrados) || 0),
+    csvInsufficient: Math.max(0, Number(latestCsvLot?.estoque_insuficiente) || 0),
+    purchaseSuggestions
+  };
+}
+
+function dashboardResolverNumber(value) {
+  return Number(value || 0).toLocaleString('pt-BR');
+}
+
+function createDashboardResolverCard({ priority, tone, title, count, description, actionLabel, onAction }) {
+  const card = document.createElement('article');
+  card.className = `resolver-card ${tone}`;
+
+  const priorityElement = document.createElement('span');
+  priorityElement.className = 'resolver-card-priority';
+  priorityElement.textContent = priority;
+
+  const titleElement = document.createElement('h3');
+  titleElement.textContent = title;
+
+  const countElement = document.createElement('strong');
+  countElement.className = 'resolver-card-count';
+  countElement.textContent = dashboardResolverNumber(count);
+
+  const descriptionElement = document.createElement('p');
+  descriptionElement.textContent = description;
+
+  const action = document.createElement('button');
+  action.type = 'button';
+  action.textContent = actionLabel;
+  action.addEventListener('click', onAction);
+
+  card.append(priorityElement, titleElement, countElement, descriptionElement, action);
+  return card;
+}
+
+function renderDashboardResolverToday() {
+  const grid = document.getElementById('resolver-today-grid');
+  const csvStatus = document.getElementById('resolver-today-csv-status');
+  const purchaseList = document.getElementById('resolver-purchase-list');
+  const purchaseCount = document.getElementById('resolver-purchase-count');
+  if (!grid || !csvStatus || !purchaseList || !purchaseCount) return;
+
+  const data = buildDashboardResolverData(
+    products,
+    historyRows,
+    dashboardLatestCsvLot ? [dashboardLatestCsvLot] : csvLots
+  );
+  grid.replaceChildren();
+
+  const cards = [
+    createDashboardResolverCard({
+      priority: 'Crítico',
+      tone: 'critical',
+      title: 'Produtos sem estoque',
+      count: data.outOfStock.length,
+      description: 'Produtos ativos que exigem reposição ou conferência imediata.',
+      actionLabel: 'Ver no Dashboard',
+      onAction: () => applyDashboardResolverStockFilter('out')
+    }),
+    createDashboardResolverCard({
+      priority: 'Alto',
+      tone: 'high',
+      title: 'Abaixo do mínimo',
+      count: data.belowMinimum.length,
+      description: 'Produtos ativos com estoque acima de zero, mas abaixo do mínimo.',
+      actionLabel: 'Ver no Dashboard',
+      onAction: () => applyDashboardResolverStockFilter('low')
+    })
+  ];
+
+  if (data.csvNotFound || data.csvInsufficient) {
+    const pending = [];
+    if (data.csvNotFound) pending.push(`${dashboardResolverNumber(data.csvNotFound)} não encontrados`);
+    if (data.csvInsufficient) pending.push(`${dashboardResolverNumber(data.csvInsufficient)} com estoque insuficiente`);
+    cards.push(createDashboardResolverCard({
+      priority: 'Alto',
+      tone: 'high',
+      title: 'Pendências do último CSV',
+      count: data.csvNotFound + data.csvInsufficient,
+      description: pending.join(' · '),
+      actionLabel: 'Abrir Histórico',
+      onAction: openLatestCsvLotFromDashboard
+    }));
+    csvStatus.hidden = true;
+  } else {
+    csvStatus.hidden = false;
+    csvStatus.textContent = data.latestCsvLot
+      ? 'Último CSV sem pendências registradas.'
+      : 'Ainda não há importação CSV carregada.';
+  }
+
+  cards.push(
+    createDashboardResolverCard({
+      priority: 'Médio',
+      tone: 'medium',
+      title: 'Cadastro incompleto',
+      count: data.incomplete.length,
+      description: 'Produtos ativos sem referência, código interno e SKU.',
+      actionLabel: 'Filtrar cadastro',
+      onAction: () => setDashboardResolverFilter('incomplete')
+    }),
+    createDashboardResolverCard({
+      priority: 'Médio',
+      tone: 'medium',
+      title: 'Definir mínimos',
+      count: data.withoutMinimum.length,
+      description: 'Produtos ativos sem mínimo configurado não entram na sugestão de compra.',
+      actionLabel: 'Filtrar produtos',
+      onAction: () => setDashboardResolverFilter('without_min')
+    }),
+    createDashboardResolverCard({
+      priority: 'Acompanhar',
+      tone: 'follow',
+      title: 'Produtos inativos',
+      count: data.inactive.length,
+      description: 'Itens preservados no cadastro, fora da operação ativa.',
+      actionLabel: 'Ver inativos',
+      onAction: () => applyDashboardResolverActiveFilter('inactive')
+    }),
+    createDashboardResolverCard({
+      priority: 'Acompanhar',
+      tone: 'follow',
+      title: 'Baixas manuais recentes',
+      count: data.recentManual.length,
+      description: 'Baixas manuais registradas nos últimos 7 dias.',
+      actionLabel: 'Abrir Histórico',
+      onAction: openRecentManualHistory
+    })
+  );
+
+  cards.forEach(card => grid.appendChild(card));
+  purchaseList.replaceChildren();
+  purchaseCount.textContent = `${dashboardResolverNumber(data.purchaseSuggestions.length)} ${data.purchaseSuggestions.length === 1 ? 'item' : 'itens'}`;
+
+  if (!data.purchaseSuggestions.length) {
+    const empty = document.createElement('p');
+    empty.className = 'resolver-purchase-empty';
+    empty.textContent = 'Nenhum produto ativo precisa ser reposto até o mínimo cadastrado.';
+    purchaseList.appendChild(empty);
+    return;
+  }
+
+  data.purchaseSuggestions.slice(0, 5).forEach(item => {
+    const row = document.createElement('article');
+    row.className = 'resolver-purchase-item';
+    const details = document.createElement('div');
+    const name = document.createElement('strong');
+    name.className = 'resolver-purchase-name';
+    name.textContent = item.product.nome || 'Produto sem nome';
+    details.append(name);
+    const stock = document.createElement('span');
+    stock.className = 'resolver-purchase-stock';
+    stock.textContent = `Estoque ${dashboardResolverNumber(item.quantity)} · Mínimo ${dashboardResolverNumber(item.minimum)}`;
+    const amount = document.createElement('span');
+    amount.className = 'resolver-purchase-suggestion';
+    amount.textContent = `Repor ${dashboardResolverNumber(item.suggested)}`;
+    row.append(details, stock, amount);
+    purchaseList.appendChild(row);
+  });
+}
+
+function resetDashboardResolverFilters() {
+  const search = document.getElementById('search-dash');
+  const status = document.getElementById('filter-status');
+  const vendor = document.getElementById('filter-vendedor');
+  if (search) search.value = '';
+  if (status) status.value = '';
+  if (vendor) vendor.value = '';
+}
+
+function focusDashboardTable() {
+  const table = document.getElementById('dash-table-wrap');
+  if (!table) return;
+  table.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  table.focus({ preventScroll: true });
+}
+
+function applyDashboardResolverStockFilter(status) {
+  if (status !== 'out' && status !== 'low') return;
+  dashboardResolverFilter = null;
+  resetDashboardResolverFilters();
+  const active = document.getElementById('filter-product-active-dash');
+  const statusFilter = document.getElementById('filter-status');
+  if (active) active.value = 'active';
+  if (statusFilter) statusFilter.value = status;
+  renderDashTable();
+  focusDashboardTable();
+}
+
+function applyDashboardResolverActiveFilter(filter) {
+  if (filter !== 'active' && filter !== 'inactive' && filter !== 'all') return;
+  dashboardResolverFilter = null;
+  resetDashboardResolverFilters();
+  const active = document.getElementById('filter-product-active-dash');
+  if (active) active.value = filter;
+  renderDashTable();
+  focusDashboardTable();
+}
+
+function setDashboardResolverFilter(filter) {
+  if (!Object.prototype.hasOwnProperty.call(DASHBOARD_RESOLVER_FILTERS, filter)) return;
+  dashboardResolverFilter = filter;
+  resetDashboardResolverFilters();
+  const active = document.getElementById('filter-product-active-dash');
+  if (active) active.value = 'active';
+  renderDashTable();
+  focusDashboardTable();
+}
+
+function clearDashboardResolverFilter() {
+  dashboardResolverFilter = null;
+  renderDashTable();
+  focusDashboardTable();
+}
+
+function renderDashboardResolverFilterState() {
+  const container = document.getElementById('dashboard-resolver-filter');
+  const label = document.getElementById('dashboard-resolver-filter-label');
+  if (!container || !label) return;
+  const filter = DASHBOARD_RESOLVER_FILTERS[dashboardResolverFilter];
+  container.hidden = !filter;
+  label.textContent = filter ? `Filtro de prioridade: ${filter.label}.` : '';
+}
+
+function openLatestCsvLotFromDashboard() {
+  const latest = dashboardLatestCsvLot;
+  switchTab('historico');
+  if (latest && dashboardFirstCsvPage.length) {
+    csvLots = dashboardFirstCsvPage.slice();
+    csvLotsPage = 1;
+    csvExpandedLots.clear();
+    csvExpandedLots.add(String(latest.id));
+    renderCsvLots();
+  }
+  const heading = document.querySelector('#tab-historico .section-title');
+  if (heading) {
+    heading.setAttribute('tabindex', '-1');
+    heading.focus();
+  }
+}
+
+function openRecentManualHistory() {
+  const type = document.getElementById('filter-historico-tipo');
+  const period = document.getElementById('filter-historico-periodo');
+  if (type) type.value = 'manual';
+  if (period) period.value = '7';
+  switchTab('historico');
+  renderHistory();
+  const heading = document.querySelector('#tab-historico .section-title');
+  if (heading) {
+    heading.setAttribute('tabindex', '-1');
+    heading.focus();
+  }
+}
+
 function qtyCellHTML(p) {
   if (!p.tem_voltagem) {
     const status = getStatus(p);
@@ -320,10 +638,13 @@ function renderDashTable() {
     const matchesStatus = !statusFilter || getStatus(p).cls === statusFilter;
     const matchesVendedor = !vendedorFilter || p.ultima_baixa_vendedor === vendedorFilter;
     const matchesActive = productMatchesActiveFilter(p, activeFilter);
-    return matchesSearch && matchesStatus && matchesVendedor && matchesActive;
+    const resolverConfig = DASHBOARD_RESOLVER_FILTERS[dashboardResolverFilter];
+    const matchesResolver = !resolverConfig || (isProductActive(p) && resolverConfig.matches(p));
+    return matchesSearch && matchesStatus && matchesVendedor && matchesActive && matchesResolver;
   });
 
   const tbody = document.getElementById('dash-tbody');
+  renderDashboardResolverFilterState();
   if (!filtered.length) { tbody.innerHTML = '<tr><td colspan="9" class="empty-state">Nenhum produto encontrado.</td></tr>'; return; }
   tbody.innerHTML = filtered.map(p => {
     const status = getStatus(p);
@@ -3423,8 +3744,13 @@ async function loadCsvLots(resetPage = false) {
   if (error) {
     csvLots = [];
     csvLotsTotal = 0;
+    if (csvLotsPage === 1) {
+      dashboardLatestCsvLot = null;
+      dashboardFirstCsvPage = [];
+    }
     el.innerHTML = '<div class="empty-state">Relatorio de CSV ainda nao configurado no Supabase.</div>';
     renderCsvLotsPagination();
+    renderDashboardResolverToday();
     return;
   }
 
@@ -3437,7 +3763,12 @@ async function loadCsvLots(resetPage = false) {
   }
 
   csvLots = data || [];
+  if (csvLotsPage === 1) {
+    dashboardLatestCsvLot = csvLots[0] || null;
+    dashboardFirstCsvPage = csvLots.slice();
+  }
   renderCsvLots();
+  renderDashboardResolverToday();
 }
 
 function toggleCsvLot(lotId) {
@@ -3550,6 +3881,7 @@ async function loadHistory() {
   const { data } = await sb.from('historico').select('*, produtos(nome, imagem_url)').order('created_at', { ascending: false }).limit(200);
   historyRows = data || [];
   renderHistory();
+  renderDashboardResolverToday();
 }
 
 function historyRowType(row) {

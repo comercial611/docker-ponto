@@ -12,7 +12,7 @@ SQL e Edge Functions. A publicacao do frontend e feita pelo GitHub Pages.
 | Area | Arquivo | Finalidade |
 | --- | --- | --- |
 | Inicio | `index.html` | Direciona cada usuario para sua area de trabalho. |
-| Administracao | `admin.html` | Produtos, dashboard, CSV, Nuvemshop, vendedores e historico. |
+| Administracao | `admin.html` | Produtos, dashboard, CSV, Nuvemshop, vendedores e historico. O Dashboard prioriza pendencias somente leitura para resolver no dia. |
 | Estoque desktop | `funcionario.html` | Contagem e atualizacao de estoque pelo computador. |
 | App Estoque | `funcionario-app.html` | Contagem rapida no celular, fotos, historico e observacoes. |
 | Vendedor | `vendedor.html` | Consulta, baixa de maquinas e historico do vendedor. |
@@ -67,3 +67,7 @@ funcoes seguras.
 O Supabase e a fonte de verdade do estoque fisico. A Nuvemshop recebe estoques
 calculados a partir dos vinculos confirmados e das regras de cada oferta, mas
 nao substitui o cadastro fisico local.
+
+O Dashboard administrativo apenas prioriza pendencias e sugere reposicao ate o
+minimo cadastrado; ele nao altera estoque. A baixa oficial continua sendo feita
+somente pelo CSV final consolidado.
