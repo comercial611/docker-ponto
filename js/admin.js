@@ -713,6 +713,9 @@ function toggleVoltagem(e) {
   document.getElementById('codes-voltage-wrap').classList.toggle('visible', checked);
   document.getElementById('qty-simple-wrap').classList.toggle('visible', !checked);
   document.getElementById('qty-voltage-wrap').classList.toggle('visible', checked);
+  document.getElementById('p-futura-voltage-target').hidden = !checked;
+  document.querySelectorAll('input[name="p-futura-voltage"]').forEach(input => { input.checked = false; });
+  setFuturaFeedback('');
 }
 
 function inputText(id) {
@@ -731,6 +734,151 @@ function extractVoltageCode(value, voltage) {
   const beforeMarker = new RegExp(`([a-z0-9][a-z0-9./-]*)\\s*\\(\\s*${voltage}\\s*v?\\s*\\)`, 'i');
   const afterMarker = new RegExp(`${voltage}\\s*v?\\s*[:=-]?\\s*([a-z0-9][a-z0-9./-]*)`, 'i');
   return text.match(beforeMarker)?.[1] || text.match(afterMarker)?.[1] || '';
+}
+
+const FUTURA_HEADER_NAMES = {
+  codigoInterno: new Set(['codinterno', 'codigointerno']),
+  referencia: new Set(['ref', 'referencia', 'codreferencia', 'coddereferencia', 'codigoreferencia', 'codigodereferencia']),
+  codigoBarras: new Set(['codbarra', 'codbarras', 'coddebarra', 'coddebarras', 'codigobarra', 'codigobarras', 'codigodebarra', 'codigodebarras'])
+};
+
+function futuraHeaderInfo(row) {
+  const normalized = row.map(normalizeHeader);
+  const indexes = {};
+  let recognizedColumns = 0;
+
+  Object.entries(FUTURA_HEADER_NAMES).forEach(([field, acceptedNames]) => {
+    indexes[field] = normalized
+      .map((value, index) => acceptedNames.has(value) ? index : -1)
+      .filter(index => index >= 0);
+    recognizedColumns += indexes[field].length;
+  });
+
+  if (!recognizedColumns) return { status: 'none' };
+  const hasDuplicate = Object.values(indexes).some(matches => matches.length > 1);
+  if (hasDuplicate || indexes.codigoInterno.length !== 1 || indexes.codigoBarras.length !== 1 || indexes.referencia.length > 1) {
+    return { status: 'invalid' };
+  }
+
+  return {
+    status: 'valid',
+    format: indexes.referencia.length === 1 ? 'grade' : 'simple',
+    codigoInternoIndex: indexes.codigoInterno[0],
+    referenciaIndex: indexes.referencia[0] ?? -1,
+    codigoBarrasIndex: indexes.codigoBarras[0]
+  };
+}
+
+function isHeaderlessGridRow(row) {
+  return row.length >= 3 && /^\d+$/.test(row[2]);
+}
+
+function parseFuturaCodes(value) {
+  const text = String(value ?? '')
+    .replace(/^\uFEFF/, '')
+    .replace(/\r\n?/g, '\n');
+  const lines = text.split('\n').filter(line => line.trim() !== '');
+
+  if (!lines.length) throw new Error('Cole uma linha do Futura antes de preencher.');
+  if (lines.length > 2) throw new Error('Cole somente uma linha de dados, com cabeçalho opcional.');
+
+  const rows = lines.map(line => line.split('\t').map(cell => cell.trim()));
+  const header = futuraHeaderInfo(rows[0]);
+  let format = 'grade';
+  let codigoInternoIndex = 0;
+  let referenciaIndex = 1;
+  let codigoBarrasIndex = 2;
+  let dataRow = rows[0];
+
+  if (lines.length === 2) {
+    if (header.status === 'invalid') throw new Error('O cabeçalho do Futura está inválido, ambíguo ou incompleto.');
+    if (header.status !== 'valid') throw new Error('Cole somente uma linha de dados, precedida opcionalmente pelo cabeçalho do Futura.');
+    format = header.format;
+    codigoInternoIndex = header.codigoInternoIndex;
+    referenciaIndex = header.referenciaIndex;
+    codigoBarrasIndex = header.codigoBarrasIndex;
+    dataRow = rows[1];
+  } else {
+    if (header.status === 'valid') throw new Error('O cabeçalho foi informado sem uma linha de dados.');
+    if (header.status === 'invalid') throw new Error('O cabeçalho do Futura está inválido, ambíguo ou incompleto.');
+    if (!isHeaderlessGridRow(dataRow)) {
+      throw new Error('Para produto simples, cole também o cabeçalho do Futura.');
+    }
+  }
+
+  const requiredIndexes = [codigoInternoIndex, codigoBarrasIndex];
+  if (format === 'grade') requiredIndexes.push(referenciaIndex);
+  if (requiredIndexes.some(index => index < 0 || index >= dataRow.length)) {
+    throw new Error('A linha de dados não contém todas as colunas exigidas pelo cabeçalho.');
+  }
+
+  const codigoInterno = dataRow[codigoInternoIndex];
+  const referenciaOriginal = format === 'grade' ? dataRow[referenciaIndex] : '';
+  const codigoBarras = dataRow[codigoBarrasIndex];
+  if (!codigoInterno || !codigoBarras || (format === 'grade' && !referenciaOriginal)) {
+    throw new Error(format === 'grade'
+      ? 'Código interno, referência e código de barras devem estar preenchidos.'
+      : 'Código interno e código de barras devem estar preenchidos.');
+  }
+
+  let referencia = referenciaOriginal;
+  const separatorIndex = referenciaOriginal.indexOf('-');
+  if (separatorIndex > 0) {
+    const prefix = referenciaOriginal.slice(0, separatorIndex).trim();
+    const suffix = referenciaOriginal.slice(separatorIndex + 1).trim();
+    if (prefix === codigoInterno && suffix) referencia = suffix;
+  }
+
+  return { format, codigoInterno, referencia, codigoBarras };
+}
+
+function setFuturaFeedback(message, type = '') {
+  const feedback = document.getElementById('p-futura-feedback');
+  feedback.textContent = message;
+  feedback.classList.toggle('error', type === 'error');
+  feedback.classList.toggle('success', type === 'success');
+}
+
+function fillFuturaCodes() {
+  const hasVoltage = document.getElementById('p-tem-voltagem').checked;
+  const voltage = hasVoltage
+    ? document.querySelector('input[name="p-futura-voltage"]:checked')?.value
+    : null;
+
+  if (hasVoltage && !voltage) {
+    setFuturaFeedback('Escolha 110V ou 220V antes de preencher os códigos.', 'error');
+    return;
+  }
+
+  let codes;
+  try {
+    codes = parseFuturaCodes(document.getElementById('p-futura-line').value);
+  } catch (error) {
+    setFuturaFeedback(error.message, 'error');
+    return;
+  }
+
+  const suffix = hasVoltage ? `-${voltage}` : '';
+  const fields = {
+    codigoInterno: document.getElementById(`p-cod-interno${suffix}`),
+    referencia: document.getElementById(`p-cod-ref${suffix}`),
+    codigoBarras: document.getElementById(`p-cod-barras${suffix}`)
+  };
+
+  fields.codigoInterno.value = codes.codigoInterno;
+  fields.referencia.value = codes.referencia;
+  fields.codigoBarras.value = codes.codigoBarras;
+  setFuturaFeedback(`Códigos ${hasVoltage ? `${voltage}V ` : ''}preenchidos. Revise antes de salvar.`, 'success');
+  fields.codigoInterno.focus();
+}
+
+function resetFuturaImportHelper() {
+  const input = document.getElementById('p-futura-line');
+  if (input) input.value = '';
+  document.querySelectorAll('input[name="p-futura-voltage"]').forEach(option => { option.checked = false; });
+  setFuturaFeedback('');
+  const helper = document.getElementById('p-futura-helper');
+  if (helper) helper.open = false;
 }
 
 function previewImg() {
@@ -952,6 +1100,7 @@ async function saveProduct() {
 function editProduct(id) {
   const p = products.find(x => x.id === id);
   if (!p) return;
+  resetFuturaImportHelper();
   document.getElementById('p-nome').value = p.nome;
   document.getElementById('p-categoria').value = p.categoria || 'maquina';
   document.getElementById('p-cod-fab').value = p.codigo_fabricante || '';
@@ -1003,6 +1152,7 @@ function clearForm() {
   document.getElementById('p-categoria').value = 'maquina';
   document.getElementById('p-fornecedor-status').value = 'normal';
   setProductTags([]);
+  resetFuturaImportHelper();
   const cb = document.getElementById('p-tem-voltagem');
   cb.checked = false;
   toggleVoltagem({ target: cb });
