@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Estoque - Administração</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<link rel="stylesheet" href="css/admin.css?v=20260816-dashboard-resolver-1">
+<link rel="stylesheet" href="css/admin.css?v=20260818-futura-codes-1">
 </head>
 <body>
 
@@ -143,6 +143,25 @@
         </div>
         <div class="tag-input-hint" id="p-tags-feedback">Até 10 tags. Separe por vírgula ou Enter.</div>
       </div>
+      <details class="futura-import-helper" id="p-futura-helper">
+        <summary>Colar linha do Futura</summary>
+        <div class="futura-import-body">
+          <p class="futura-import-copy">Com cabeçalho, o sistema reconhece produtos de grade (interno, referência e barras) e produtos simples (interno e barras). Para produto simples, o cabeçalho é obrigatório. Sem cabeçalho, cole somente linhas do formato de grade.</p>
+          <div class="form-field">
+            <label for="p-futura-line">Conteúdo copiado</label>
+            <textarea id="p-futura-line" rows="3" spellcheck="false" autocomplete="off" autocapitalize="off" aria-describedby="p-futura-feedback" placeholder="Cole o cabeçalho e uma linha do Futura, ou uma linha de grade sem cabeçalho"></textarea>
+          </div>
+          <fieldset class="futura-voltage-target" id="p-futura-voltage-target" hidden>
+            <legend>Preencher códigos de qual voltagem?</legend>
+            <div class="futura-target-options">
+              <label><input type="radio" name="p-futura-voltage" value="110"> 110V</label>
+              <label><input type="radio" name="p-futura-voltage" value="220"> 220V</label>
+            </div>
+          </fieldset>
+          <button type="button" class="futura-fill-button" onclick="fillFuturaCodes()">Preencher códigos</button>
+          <p class="futura-import-feedback" id="p-futura-feedback" role="alert" aria-live="polite"></p>
+        </div>
+      </details>
       <div id="codes-simple-wrap" class="visible">
         <div class="codes-grid">
           <div class="form-field"><label>Código do Fabricante</label><input type="text" id="p-cod-fab" placeholder="FAB-1234"></div>
@@ -803,6 +822,6 @@
 <script src="js/produto-busca.js?v=20260725-tags-fornecedor-1"></script>
 <script src="js/admin-nuvemshop-auditoria.js?v=20260724-admin-auditoria-1"></script>
 <script src="js/admin-notificacoes.js?v=20260725-seguranca-notificacoes-1"></script>
-<script src="js/admin.js?v=20260816-dashboard-resolver-1"></script>
+<script src="js/admin.js?v=20260818-futura-codes-1"></script>
 </body>
 </html>

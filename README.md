@@ -22,6 +22,19 @@ Cada area valida sua propria sessao pelo Supabase Auth. As permissoes efetivas
 nao dependem apenas da tela: elas tambem sao verificadas no banco por RLS e por
 funcoes seguras.
 
+## Colar linha do Futura
+
+Na aba Produtos, durante o cadastro ou a edicao, o bloco `Colar linha do
+Futura` auxilia o preenchimento dos codigos copiados do ERP. Ele aceita produto
+de grade, com codigo interno, referencia e codigo de barras, e produto simples,
+com codigo interno e barras; para produto simples, o cabecalho e obrigatorio.
+
+Quando o produto possui 110V/220V, o usuario deve escolher explicitamente o
+destino antes de preencher. Os codigos sao apenas colocados no formulario para
+conferencia: formatos invalidos nao alteram os campos e nada e salvo
+automaticamente. O usuario continua responsavel por revisar os valores e clicar
+em `Salvar produto`.
+
 ## Estrutura
 
 ```text
