@@ -334,7 +334,91 @@ Uma futura migracao de interface nao deve reescrever as regras de negocio. As
 funcoes seguras, auditorias e contratos do backend devem continuar sendo a base
 estavel do sistema.
 
-## 11. Fora do escopo atual
+## 11. Estoque intradiario — planejado / ainda nao implementado
+
+Esta secao e uma especificacao futura e nao descreve funcionalidade disponivel
+na versao atual. O CSV consolidado diario continua sendo a unica baixa oficial
+do estoque local. Vendas nas lojas Nuvemshop `3514029` e `6696910` reduzem
+somente o remoto durante o dia e aguardam o CSV seguinte; uma diferenca remota
+sem causa local nunca pode gerar reposicao automatica.
+
+### Separacao das movimentacoes
+
+- **Entrada:** futura operacao causal com quantidade positiva, motivo, usuario,
+  data, itens e voltagem. Soma no Docker e publica a mesma entrada fisica em
+  cada loja, sem dividir quantidade entre elas.
+- **Ajuste manual:** futura operacao explicita, com saldo alvo ou delta,
+  motivo obrigatorio, auditoria e chave de idempotencia. Zeragem multitem deve
+  ser atomica: todos os itens ou nenhum.
+- **Venda remota pendente:** observacao por loja, sem baixa local e sem
+  escrita. Sem pedidos confiaveis no fluxo atual, deve ser apresentada como
+  `aguardando CSV`, nao como uma venda contabilizada.
+- **CSV:** permanece separado e continua aplicando a baixa oficial local. Ele
+  nao cria uma publicacao externa de entrada ou ajuste.
+
+Se um produto acabou somente por vendas ainda pendentes do CSV, uma operacao
+humana podera zerar a disponibilidade externa, mas o saldo local aguardara o
+CSV. Assim, nenhuma segunda baixa local sera estimada. Um saldo alvo local que
+possa incorporar vendas pendentes nao deve ser aplicado antes do fechamento;
+ajustes intradiarios precisam declarar causa independente do CSV.
+
+### Modelo futuro
+
+O desenho recomendado e composto por:
+
+- `estoque_operacoes` e `estoque_operacao_itens`, com lock deterministico,
+  motivo, operador, antes/depois e chave de idempotencia;
+- `nuvemshop_publicacoes_intradia` por operacao e loja;
+- `nuvemshop_publicacao_intradia_itens` por operacao, loja e vinculo;
+- registro de residuos para preservar quantidades fisicas menores que
+  `unidades_por_venda`;
+- observacoes de divergencia remota, sem permissao de escrita;
+- estado operacional e eventos de pausa por `store_id`.
+
+Para cada loja, a entrada deve partir do estoque externo atual e acrescentar a
+mesma quantidade fisica, convertida pelo multiplicador da oferta. Produtos
+110V e 220V sao itens separados. A zeragem usa alvo externo zero explícito.
+Qualquer mudança de vinculo, produto, multiplicador, pausa ou saldo entre
+prévia e aplicação invalida a autorização.
+
+Publicações futuras seguirão:
+
+```text
+operacao causal -> outbox por operacao/loja/item -> confirmacao humana
+-> janela temporaria -> releitura e confirmacao
+```
+
+O executor deverá reler antes e depois de cada escrita. Estado incerto não
+terá retry automático. Uma falha na loja `3514029` não poderá alterar ou
+reaplicar a loja `6696910`; retry será somente da loja/item elegível.
+
+### Prévia, pausa e separação
+
+A prévia genérica atual continuará diagnóstica. Itens `aguardando CSV` não
+podem autorizar `aplicar_piloto` ou `aplicar_lote`. Escrita externa será sempre
+explícita, temporária e auditada.
+
+A pausa/emergência será individual por loja, com motivo, usuário e data,
+verificada no servidor ao autorizar, reservar, iniciar cada chamada externa e
+continuar o lote. Ela não poderá afetar a outra loja.
+
+Preços, CSV, catálogo, OAuth, LGPD e sincronização normal permanecem fora
+deste fluxo. Cada PR futura deverá atualizar `README.md`, `supabase/README.md`
+e este documento antes de ser encerrada.
+
+### Roadmap planejado
+
+1. Documentação e invariantes.
+2. Ledger de entrada local.
+3. Ajuste e zeragem.
+4. Pausa por loja.
+5. Outbox e autorizações.
+6. Prévia intradiária.
+7. Piloto em uma loja.
+8. Segunda loja, falhas e retry.
+9. Reconciliação pós-CSV.
+
+## 12. Fora do escopo atual
 
 - Nuvemshop como fonte principal do estoque fisico;
 - sincronizacao automatica sem previa e confirmacao;
