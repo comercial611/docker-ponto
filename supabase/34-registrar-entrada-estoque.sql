@@ -320,7 +320,8 @@ begin
     end if;
 
     if v_produto.tem_voltagem then
-      if v_item.voltagem not in ('110v', '220v') then
+      if v_item.voltagem is null
+         or v_item.voltagem not in ('110v', '220v') then
         raise exception 'Selecione 110V ou 220V para %.', v_produto.nome;
       end if;
       v_voltagem := v_item.voltagem;

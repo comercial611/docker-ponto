@@ -454,6 +454,32 @@ test('migration protege tipos, auditoria, idempotência e permissões', () => {
   assert.match(migrationSource, /grant execute on function public\.registrar_entrada_estoque[\s\S]*to authenticated/i);
 });
 
+test('migration rejeita destino nulo para produto com voltagem', async () => {
+  assert.match(
+    migrationSource,
+    /if v_produto\.tem_voltagem then\s+if v_item\.voltagem is null\s+or v_item\.voltagem not in \('110v', '220v'\) then/i
+  );
+  assert.match(
+    migrationSource,
+    /else\s+if v_item\.voltagem is not null then\s+raise exception 'Produto sem voltagem deve usar o estoque simples:/i
+  );
+
+  const mock = createMockRegistrar(products);
+  await assert.rejects(
+    mock.register({
+      p_chave_operacao: operationKey,
+      p_motivo: 'Entrada sem destino',
+      p_data_movimento: today,
+      p_itens: [{ produto_id: 2, quantidade: 1, voltagem: null }]
+    }),
+    /voltagem invalida/
+  );
+  assert.equal(mock.state.get(2).quantidade, 93);
+  assert.equal(mock.state.get(2).quantidade_110v, 3);
+  assert.equal(mock.state.get(2).quantidade_220v, 4);
+  assert.equal(mock.operations.size, 0);
+});
+
 test('histórico distingue entrada de mercadoria de contagem e baixa', () => {
   const rowTypeSource = adminSource.match(/function historyRowType\(row\) \{[\s\S]*?\n\}/)?.[0] || '';
   const labelSource = adminSource.match(/function historyTypeLabel\(row\) \{[\s\S]*?\n\}/)?.[0] || '';
