@@ -12,7 +12,7 @@ SQL e Edge Functions. A publicacao do frontend e feita pelo GitHub Pages.
 | Area | Arquivo | Finalidade |
 | --- | --- | --- |
 | Inicio | `index.html` | Direciona cada usuario para sua area de trabalho. |
-| Administracao | `admin.html` | Produtos, dashboard, CSV, Nuvemshop, vendedores e historico. O Dashboard prioriza pendencias somente leitura para resolver no dia. |
+| Administracao | `admin.html` | Produtos, entrada local auditada, dashboard, CSV, Nuvemshop, vendedores e historico. O Dashboard prioriza pendencias somente leitura para resolver no dia. |
 | Estoque desktop | `funcionario.html` | Contagem e atualizacao de estoque pelo computador. |
 | App Estoque | `funcionario-app.html` | Contagem rapida no celular, fotos, historico e observacoes. |
 | Vendedor | `vendedor.html` | Consulta, baixa de maquinas e historico do vendedor. |
@@ -85,10 +85,19 @@ O Dashboard administrativo apenas prioriza pendencias e sugere reposicao ate o
 minimo cadastrado; ele nao altera estoque. A baixa oficial continua sendo feita
 somente pelo CSV final consolidado.
 
-## Estoque intradiario — planejado / ainda nao implementado
+## Estoque intradiario — etapa 1: entrada local auditada
 
-Esta secao descreve uma arquitetura futura. Nenhum dos fluxos abaixo esta
-disponivel como funcionalidade hoje.
+A primeira etapa esta implementada na aba Produtos. Administradores podem usar
+`Registrar entrada` para gravar uma unica operacao com motivo, data e varios
+produtos ou variantes 110V/220V. A migration
+`supabase/34-registrar-entrada-estoque.sql` cria o ledger imutavel e a RPC
+atomica `registrar_entrada_estoque`. A chave UUID torna a repeticao idempotente;
+se a resposta ficar incerta, o navegador preserva e bloqueia o mesmo lote no
+`sessionStorage` para tentar novamente sem duplicar a soma.
+
+Esta etapa altera exclusivamente o estoque fisico local. Ela nao consulta nem
+publica estoque na Nuvemshop, nao cria outbox ou Edge Function e nao interfere
+em preco, catalogo, OAuth, LGPD, vinculos ou nos campos de ultima baixa.
 
 - O CSV consolidado diario continua sendo a unica baixa oficial do estoque
   local. Ele nao deve ser reaplicado para representar uma venda remota ja
@@ -96,10 +105,10 @@ disponivel como funcionalidade hoje.
 - Vendas ocorridas nas lojas Nuvemshop `3514029` e `6696910` reduzem somente o
   estoque remoto durante o dia e aguardam o CSV seguinte. Uma diferenca remota
   sem causa local nao pode disparar reposicao automatica.
-- As duas lojas compartilham um unico estoque fisico. Uma futura entrada
-  auditada somara no Docker e publicara a mesma entrada fisica em cada loja,
-  nunca dividindo a quantidade entre elas. `unidades_por_venda` e as voltagens
-  110V/220V serao tratados por item e por loja.
+- As duas lojas compartilham um unico estoque fisico. A entrada auditada agora
+  soma no Docker sem dividir quantidade entre lojas. Uma publicacao futura
+  podera refletir a mesma entrada fisica em cada loja; `unidades_por_venda` e
+  as voltagens 110V/220V deverao ser tratados por item e por loja.
 - Ajuste manual e zeragem exigirao motivo, auditoria, idempotencia e
   confirmacao humana. Uma zeragem causada apenas por vendas ainda pendentes do
   CSV podera zerar a disponibilidade externa, mas o estoque local aguardara o
@@ -115,8 +124,8 @@ disponivel como funcionalidade hoje.
 
 ### Roadmap planejado
 
-1. Documentar invariantes.
-2. Criar ledger de entrada local.
+1. Documentar invariantes. **Concluido nesta etapa.**
+2. Criar ledger e interface de entrada local. **Concluido na migration 34.**
 3. Criar ajuste e zeragem auditados.
 4. Criar pausa individual por loja.
 5. Criar outbox e autorizacoes temporarias.
@@ -126,5 +135,6 @@ disponivel como funcionalidade hoje.
 9. Criar reconciliação pós-CSV.
 
 Cada PR futura deverá atualizar este arquivo, `supabase/README.md` e
-`docs/ARQUITETURA.md`. Até lá, não há migration, RPC, Edge Function ou escrita
-externa intradiaria para executar.
+`docs/ARQUITETURA.md`. Alem da entrada local da migration 34, publicacao
+intradiaria na Nuvemshop, outbox, pausas, janelas, ajuste, zeragem e
+reconciliacao pos-CSV continuam planejados e nao implementados.

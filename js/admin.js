@@ -1,3 +1,277 @@
+// BEGIN ENTRADA_ESTOQUE_CORE
+const EntradaEstoqueCore = (() => {
+  const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  const POSITIVE_INTEGER_PATTERN = /^[1-9][0-9]*$/;
+  const ISO_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+  function localDateString(date = new Date()) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+  function createOperationKey(cryptoObject) {
+    if (typeof cryptoObject?.randomUUID === 'function') {
+      return cryptoObject.randomUUID();
+    }
+    if (typeof cryptoObject?.getRandomValues !== 'function') {
+      throw new Error('Não foi possível gerar uma chave segura para a entrada.');
+    }
+    const bytes = new Uint8Array(16);
+    cryptoObject.getRandomValues(bytes);
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    const hex = Array.from(bytes, value => value.toString(16).padStart(2, '0')).join('');
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+  }
+
+  function isValidDate(value, today = localDateString()) {
+    const match = ISO_DATE_PATTERN.exec(String(value || ''));
+    if (!match || value > today) return false;
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    const day = Number(match[3]);
+    const parsed = new Date(Date.UTC(year, month - 1, day));
+    return parsed.getUTCFullYear() === year
+      && parsed.getUTCMonth() === month - 1
+      && parsed.getUTCDate() === day;
+  }
+
+  function currentBalance(product, voltage) {
+    if (!product) return 0;
+    const raw = product.tem_voltagem
+      ? (voltage === '110v' ? product.quantidade_110v : voltage === '220v' ? product.quantidade_220v : 0)
+      : product.quantidade;
+    const balance = Number(raw);
+    return Number.isInteger(balance) && balance >= 0 ? balance : 0;
+  }
+
+  function validateDraft(draft, productList, today = localDateString()) {
+    const errors = [];
+    const reason = String(draft?.motivo || '').trim();
+    const movementDate = String(draft?.data_movimento || '');
+    const sourceItems = Array.isArray(draft?.itens) ? draft.itens : [];
+    const productsById = new Map((Array.isArray(productList) ? productList : []).map(product => [String(product.id), product]));
+    const normalizedItems = [];
+    const targets = new Set();
+
+    if (!UUID_PATTERN.test(String(draft?.chave_operacao || ''))) errors.push('A chave da operação é inválida.');
+    if (!reason || reason.length > 500) errors.push('Informe um motivo com até 500 caracteres.');
+    if (!isValidDate(movementDate, today)) errors.push('Informe uma data válida que não esteja no futuro.');
+    if (sourceItems.length < 1 || sourceItems.length > 100) errors.push('Informe de 1 a 100 itens.');
+
+    sourceItems.forEach((item, index) => {
+      const position = index + 1;
+      const productIdText = String(item?.produto_id || '').trim();
+      const quantityText = String(item?.quantidade || '').trim();
+      if (!POSITIVE_INTEGER_PATTERN.test(productIdText) || Number(productIdText) > 2147483647) {
+        errors.push(`Selecione um produto válido no item ${position}.`);
+        return;
+      }
+      if (!POSITIVE_INTEGER_PATTERN.test(quantityText) || Number(quantityText) > 2147483647) {
+        errors.push(`Informe uma quantidade inteira positiva no item ${position}.`);
+        return;
+      }
+
+      const product = productsById.get(productIdText);
+      if (!product || product.ativo !== true) {
+        errors.push(`O produto do item ${position} não existe ou está inativo.`);
+        return;
+      }
+
+      let voltage = null;
+      if (product.tem_voltagem) {
+        voltage = String(item?.voltagem || '').toLowerCase();
+        if (voltage !== '110v' && voltage !== '220v') {
+          errors.push(`Selecione 110V ou 220V no item ${position}.`);
+          return;
+        }
+      } else if (item?.voltagem !== null && item?.voltagem !== undefined && item?.voltagem !== '') {
+        errors.push(`O produto simples do item ${position} não aceita voltagem.`);
+        return;
+      }
+
+      const target = `${productIdText}:${voltage || 'simples'}`;
+      if (targets.has(target)) {
+        errors.push(`Não repita o mesmo produto e variante no item ${position}.`);
+        return;
+      }
+      targets.add(target);
+      normalizedItems.push({
+        produto_id: Number(productIdText),
+        quantidade: Number(quantityText),
+        voltagem: voltage
+      });
+    });
+
+    return {
+      ok: errors.length === 0 && normalizedItems.length === sourceItems.length,
+      errors,
+      normalized: {
+        chave_operacao: String(draft?.chave_operacao || ''),
+        motivo: reason,
+        data_movimento: movementDate,
+        itens: normalizedItems
+      }
+    };
+  }
+
+  function rpcArguments(normalized) {
+    return {
+      p_chave_operacao: normalized.chave_operacao,
+      p_motivo: normalized.motivo,
+      p_data_movimento: normalized.data_movimento,
+      p_itens: normalized.itens
+    };
+  }
+
+  function isValidRpcResult(data, args) {
+    if (!Array.isArray(data) || data.length < 1 || !Array.isArray(args?.p_itens)) return false;
+    if (data.length !== args.p_itens.length || !UUID_PATTERN.test(String(args.p_chave_operacao || ''))) return false;
+
+    const expectedItems = new Map();
+    for (const item of args.p_itens) {
+      const productId = item?.produto_id;
+      const quantity = item?.quantidade;
+      const voltage = item?.voltagem ?? null;
+      if (!Number.isInteger(productId) || productId < 1
+          || !Number.isInteger(quantity) || quantity < 1
+          || (voltage !== null && voltage !== '110v' && voltage !== '220v')) return false;
+      const target = `${productId}:${voltage || 'simples'}`;
+      if (expectedItems.has(target)) return false;
+      expectedItems.set(target, { quantity, voltage });
+    }
+
+    const seenTargets = new Set();
+    const seenHistoryIds = new Set();
+    let operationId = null;
+    let repeated = null;
+    for (const item of data) {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) return false;
+      const voltage = item.voltagem ?? null;
+      const target = `${item.produto_id}:${voltage || 'simples'}`;
+      const expected = expectedItems.get(target);
+      if (!expected || seenTargets.has(target)) return false;
+      if (!Number.isInteger(item.operacao_id) || item.operacao_id < 1
+          || item.chave_operacao !== args.p_chave_operacao
+          || !Number.isInteger(item.produto_id) || item.produto_id < 1
+          || typeof item.produto_nome !== 'string' || !item.produto_nome.trim()
+          || voltage !== expected.voltage
+          || !Number.isInteger(item.quantidade) || item.quantidade !== expected.quantity
+          || !Number.isInteger(item.quantidade_anterior) || item.quantidade_anterior < 0
+          || !Number.isInteger(item.quantidade_nova)
+          || item.quantidade_nova !== item.quantidade_anterior + item.quantidade
+          || !Number.isInteger(item.historico_id) || item.historico_id < 1
+          || typeof item.repetida !== 'boolean') return false;
+      if (operationId !== null && item.operacao_id !== operationId) return false;
+      if (repeated !== null && item.repetida !== repeated) return false;
+      if (seenHistoryIds.has(item.historico_id)) return false;
+      operationId = item.operacao_id;
+      repeated = item.repetida;
+      seenTargets.add(target);
+      seenHistoryIds.add(item.historico_id);
+    }
+
+    return seenTargets.size === expectedItems.size;
+  }
+
+  function saveDraft(storage, key, draft) {
+    try {
+      storage.setItem(key, JSON.stringify(draft));
+      return true;
+    } catch (_error) {
+      return false;
+    }
+  }
+
+  function loadDraft(storage, key) {
+    try {
+      const raw = storage.getItem(key);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      return parsed?.version === 1 && UUID_PATTERN.test(String(parsed.chave_operacao || '')) ? parsed : null;
+    } catch (_error) {
+      return null;
+    }
+  }
+
+  function isNetworkFailure(error) {
+    const message = String(error?.message || error || '').toLowerCase();
+    return error?.code === 'ENTRADA_TIMEOUT'
+      || error?.name === 'AbortError'
+      || error?.status === 0
+      || Number(error?.status) >= 500
+      || /failed to fetch|network|timeout|tempo limite|load failed/.test(message);
+  }
+
+  function isConfirmedNoWriteError(error) {
+    return error?.entradaNoWriteConfirmed === true;
+  }
+
+  function rpcErrorFromResponse(error, status) {
+    const serverError = error instanceof Error
+      ? error
+      : new Error(error?.message || String(error));
+    const responseStatus = Number(status ?? error?.status);
+    if (Number.isInteger(responseStatus)) serverError.status = responseStatus;
+    const definitiveNoWriteStatuses = new Set([
+      400, 401, 403, 404, 405, 406, 409, 410, 411, 412, 413, 414, 415, 416, 417, 422
+    ]);
+    if (definitiveNoWriteStatuses.has(responseStatus)) {
+      serverError.entradaNoWriteConfirmed = true;
+    }
+    return serverError;
+  }
+
+  function draftAfterFailure(draft, error) {
+    if (isConfirmedNoWriteError(error)) {
+      return { ...draft, retry_locked: false, pending_args: null, confirmado: false };
+    }
+    return { ...draft, retry_locked: true, confirmado: true };
+  }
+
+  function canDiscardDraft(draft, submitting = false) {
+    return Boolean(draft) && !submitting && draft.retry_locked !== true;
+  }
+
+  function selectDraftForOpen(inMemoryDraft, storedDraft) {
+    return inMemoryDraft?.retry_locked === true ? inMemoryDraft : storedDraft;
+  }
+
+  function callWithTimeout(invoke, args, timeoutMs = 15000) {
+    let timeoutId;
+    const timeout = new Promise((_, reject) => {
+      timeoutId = setTimeout(() => {
+        const error = new Error('Tempo limite excedido. O resultado da operação é incerto.');
+        error.code = 'ENTRADA_TIMEOUT';
+        reject(error);
+      }, timeoutMs);
+    });
+    return Promise.race([Promise.resolve().then(() => invoke(args)), timeout])
+      .finally(() => clearTimeout(timeoutId));
+  }
+
+  return {
+    callWithTimeout,
+    canDiscardDraft,
+    createOperationKey,
+    currentBalance,
+    draftAfterFailure,
+    isConfirmedNoWriteError,
+    isNetworkFailure,
+    isValidRpcResult,
+    loadDraft,
+    localDateString,
+    rpcErrorFromResponse,
+    rpcArguments,
+    saveDraft,
+    selectDraftForOpen,
+    validateDraft
+  };
+})();
+// END ENTRADA_ESTOQUE_CORE
+
 let products = [];
 let vendedores = [];
 let deleteTargetId = null;
@@ -83,6 +357,13 @@ const PRODUCT_STATUS_FOCUS_TARGETS = Object.freeze({
   dashboard: 'filter-product-active-dash',
   products: 'filter-product-active-products'
 });
+const ENTRADA_ESTOQUE_STORAGE_KEY = 'admin:entrada-estoque:v1';
+const ENTRADA_ESTOQUE_TIMEOUT_MS = 15000;
+let entradaEstoqueDraft = null;
+let entradaEstoqueSubmitting = false;
+let entradaEstoquePreviousFocus = null;
+let entradaEstoqueNextRowId = 1;
+let entradaEstoqueInitialized = false;
 
 
 // Estado do painel de baixa
@@ -173,6 +454,7 @@ async function init() {
   loadSavedNotifications();
   setDefaultCsvMovementDate();
   await loadProducts();
+  initEntradaEstoque();
   await loadVendedores();
   await loadHistory();
   restoreRecentHistoryNotifications(historyRows.filter(shouldNotifyHistoryRecord).slice(0, 50));
@@ -197,8 +479,501 @@ async function loadProducts({ throwOnError = false } = {}) {
   renderProdTable();
   updateStats();
   renderDashboardResolverToday();
+  if (document.getElementById('entrada-estoque-modal')?.classList.contains('open') && entradaEstoqueDraft) {
+    renderEntradaEstoqueItems();
+  }
   return { data: newList, error: error || null };
 }
+
+// BEGIN ENTRADA_ESTOQUE_UI
+function createEntradaEstoqueDraft() {
+  return {
+    version: 1,
+    chave_operacao: EntradaEstoqueCore.createOperationKey(globalThis.crypto),
+    motivo: '',
+    data_movimento: EntradaEstoqueCore.localDateString(),
+    itens: [{ row_id: entradaEstoqueNextRowId++, produto_id: '', voltagem: null, quantidade: '' }],
+    confirmado: false,
+    retry_locked: false,
+    pending_args: null
+  };
+}
+
+function prepareEntradaEstoqueDraft(rawDraft) {
+  const draft = rawDraft || createEntradaEstoqueDraft();
+  draft.version = 1;
+  const pending = draft.pending_args;
+  draft.retry_locked = draft.retry_locked === true;
+  const hasCoherentPendingArgs = Boolean(
+    pending
+    && pending.p_chave_operacao === draft.chave_operacao
+    && Array.isArray(pending.p_itens)
+  );
+  if (draft.retry_locked && hasCoherentPendingArgs) {
+    draft.motivo = String(pending.p_motivo || '');
+    draft.data_movimento = String(pending.p_data_movimento || '');
+    draft.itens = pending.p_itens;
+  }
+  draft.motivo = String(draft.motivo || '');
+  draft.data_movimento = String(draft.data_movimento || EntradaEstoqueCore.localDateString());
+  draft.itens = Array.isArray(draft.itens) && draft.itens.length
+    ? draft.itens.map(item => ({
+        row_id: entradaEstoqueNextRowId++,
+        produto_id: String(item?.produto_id || ''),
+        voltagem: item?.voltagem || null,
+        quantidade: String(item?.quantidade || '')
+      }))
+    : [{ row_id: entradaEstoqueNextRowId++, produto_id: '', voltagem: null, quantidade: '' }];
+  draft.confirmado = draft.retry_locked ? true : Boolean(draft.confirmado);
+  return draft;
+}
+
+function saveEntradaEstoqueDraft({ announceFailure = true } = {}) {
+  if (!entradaEstoqueDraft) return true;
+  const saved = EntradaEstoqueCore.saveDraft(sessionStorage, ENTRADA_ESTOQUE_STORAGE_KEY, entradaEstoqueDraft);
+  if (!saved && announceFailure) {
+    setEntradaEstoqueFeedback('Não foi possível preservar esta entrada nesta sessão. Não envie até liberar o armazenamento do navegador.', 'warning');
+  }
+  refreshEntradaEstoqueButton();
+  return saved;
+}
+
+function refreshEntradaEstoqueButton() {
+  const button = document.getElementById('btn-open-entrada-estoque');
+  if (!button) return;
+  const saved = entradaEstoqueDraft || EntradaEstoqueCore.loadDraft(sessionStorage, ENTRADA_ESTOQUE_STORAGE_KEY);
+  button.textContent = saved?.retry_locked ? 'Retomar operação pendente' : (saved ? 'Retomar entrada' : 'Registrar entrada');
+}
+
+function initEntradaEstoque() {
+  refreshEntradaEstoqueButton();
+  if (entradaEstoqueInitialized) return;
+  entradaEstoqueInitialized = true;
+  document.addEventListener('keydown', event => {
+    const modal = document.getElementById('entrada-estoque-modal');
+    if (!modal?.classList.contains('open')) return;
+    if (event.key === 'Escape' && !entradaEstoqueSubmitting) closeEntradaEstoqueModal();
+  });
+}
+
+function openEntradaEstoqueModal() {
+  const modal = document.getElementById('entrada-estoque-modal');
+  if (!modal) return;
+  entradaEstoquePreviousFocus = document.activeElement;
+  try {
+    const stored = EntradaEstoqueCore.loadDraft(sessionStorage, ENTRADA_ESTOQUE_STORAGE_KEY);
+    const saved = EntradaEstoqueCore.selectDraftForOpen(entradaEstoqueDraft, stored);
+    entradaEstoqueDraft = prepareEntradaEstoqueDraft(saved);
+  } catch (error) {
+    setEntradaEstoqueFeedback(error.message || 'Não foi possível iniciar a entrada.', 'warning');
+    return;
+  }
+
+  modal.classList.add('open');
+  modal.setAttribute('aria-hidden', 'false');
+  document.getElementById('entrada-estoque-chave').textContent = entradaEstoqueDraft.chave_operacao;
+  document.getElementById('entrada-estoque-data').value = entradaEstoqueDraft.data_movimento;
+  document.getElementById('entrada-estoque-motivo').value = entradaEstoqueDraft.motivo;
+  document.getElementById('entrada-estoque-confirm').checked = Boolean(entradaEstoqueDraft.confirmado);
+  setEntradaEstoqueFeedback(
+    entradaEstoqueDraft.retry_locked
+      ? 'O resultado anterior é incerto. A única ação segura é tentar novamente com a mesma chave e os mesmos dados.'
+      : '',
+    entradaEstoqueDraft.retry_locked ? 'warning' : ''
+  );
+  renderEntradaEstoqueItems();
+  updateEntradaEstoqueControls();
+  if (!saveEntradaEstoqueDraft()) return;
+  requestAnimationFrame(() => {
+    const target = entradaEstoqueDraft.retry_locked
+      ? document.getElementById('entrada-estoque-submit')
+      : document.getElementById('entrada-estoque-data');
+    target?.focus();
+  });
+}
+
+function closeEntradaEstoqueModal() {
+  if (entradaEstoqueSubmitting) return;
+  saveEntradaEstoqueDraft({ announceFailure: false });
+  const modal = document.getElementById('entrada-estoque-modal');
+  modal?.classList.remove('open');
+  modal?.setAttribute('aria-hidden', 'true');
+  if (entradaEstoquePreviousFocus?.focus) entradaEstoquePreviousFocus.focus();
+}
+
+function discardEntradaEstoque() {
+  if (!EntradaEstoqueCore.canDiscardDraft(entradaEstoqueDraft, entradaEstoqueSubmitting)) {
+    if (!entradaEstoqueDraft || entradaEstoqueSubmitting) return;
+    setEntradaEstoqueFeedback('Esta operação não pode ser descartada porque o resultado é incerto. Use “Tentar novamente” com a mesma chave e os mesmos dados.', 'warning');
+    updateEntradaEstoqueControls();
+    return;
+  }
+  if (!confirm('Descartar esta entrada e sua chave de operação?')) return;
+  sessionStorage.removeItem(ENTRADA_ESTOQUE_STORAGE_KEY);
+  entradaEstoqueDraft = null;
+  closeEntradaEstoqueModal();
+  refreshEntradaEstoqueButton();
+}
+
+function setEntradaEstoqueFeedback(message, tone = '') {
+  const feedback = document.getElementById('entrada-estoque-feedback');
+  if (!feedback) return;
+  feedback.className = 'entrada-estoque-feedback';
+  if (tone) feedback.classList.add(tone);
+  feedback.textContent = message || '';
+}
+
+function resetEntradaEstoqueConfirmation() {
+  if (!entradaEstoqueDraft || entradaEstoqueDraft.retry_locked) return;
+  entradaEstoqueDraft.confirmado = false;
+  entradaEstoqueDraft.pending_args = null;
+  const confirmation = document.getElementById('entrada-estoque-confirm');
+  if (confirmation) confirmation.checked = false;
+}
+
+function updateEntradaEstoqueHeader() {
+  if (!entradaEstoqueDraft || entradaEstoqueDraft.retry_locked) return;
+  entradaEstoqueDraft.data_movimento = document.getElementById('entrada-estoque-data').value;
+  entradaEstoqueDraft.motivo = document.getElementById('entrada-estoque-motivo').value;
+  resetEntradaEstoqueConfirmation();
+  setEntradaEstoqueFeedback('');
+  saveEntradaEstoqueDraft();
+  updateEntradaEstoqueControls();
+}
+
+function updateEntradaEstoqueConfirmation() {
+  if (!entradaEstoqueDraft || entradaEstoqueDraft.retry_locked) return;
+  entradaEstoqueDraft.confirmado = document.getElementById('entrada-estoque-confirm').checked;
+  saveEntradaEstoqueDraft();
+  updateEntradaEstoqueControls();
+}
+
+function activeEntradaEstoqueProducts() {
+  return products
+    .filter(product => product.ativo === true)
+    .slice()
+    .sort((a, b) => String(a.nome || '').localeCompare(String(b.nome || ''), 'pt-BR'));
+}
+
+function entradaEstoqueProductLabel(product) {
+  const code = product.codigo_interno || product.codigo_referencia || product.sku;
+  return code ? `${product.nome} — ${code}` : `${product.nome} — ID ${product.id}`;
+}
+
+function entradaEstoqueHasDuplicate(items = entradaEstoqueDraft?.itens || []) {
+  const targets = new Set();
+  for (const item of items) {
+    const product = products.find(candidate => String(candidate.id) === String(item.produto_id));
+    if (!product || (product.tem_voltagem && !item.voltagem)) continue;
+    const target = `${item.produto_id}:${product.tem_voltagem ? item.voltagem : 'simples'}`;
+    if (targets.has(target)) return true;
+    targets.add(target);
+  }
+  return false;
+}
+
+function createEntradaEstoqueField(labelText, control, extraClass = '') {
+  const field = document.createElement('div');
+  field.className = `form-field ${extraClass}`.trim();
+  const label = document.createElement('label');
+  label.textContent = labelText;
+  field.append(label, control);
+  return field;
+}
+
+function renderEntradaEstoqueItems() {
+  const container = document.getElementById('entrada-estoque-items');
+  if (!container || !entradaEstoqueDraft) return;
+  container.replaceChildren();
+  const activeProducts = activeEntradaEstoqueProducts();
+
+  entradaEstoqueDraft.itens.forEach((item, index) => {
+    const row = document.createElement('div');
+    row.className = 'entrada-estoque-item';
+    row.dataset.rowId = String(item.row_id);
+
+    const productSelect = document.createElement('select');
+    productSelect.disabled = entradaEstoqueDraft.retry_locked || entradaEstoqueSubmitting;
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = 'Selecione...';
+    productSelect.appendChild(placeholder);
+    activeProducts.forEach(product => {
+      const option = document.createElement('option');
+      option.value = String(product.id);
+      option.textContent = entradaEstoqueProductLabel(product);
+      productSelect.appendChild(option);
+    });
+    const selectedProduct = products.find(product => String(product.id) === String(item.produto_id));
+    if (item.produto_id && selectedProduct && selectedProduct.ativo !== true) {
+      const unavailable = document.createElement('option');
+      unavailable.value = String(selectedProduct.id);
+      unavailable.textContent = `${entradaEstoqueProductLabel(selectedProduct)} — inativo`;
+      unavailable.disabled = true;
+      productSelect.appendChild(unavailable);
+    }
+    productSelect.value = String(item.produto_id || '');
+    productSelect.addEventListener('change', () => {
+      const previousProductId = item.produto_id;
+      const previousVoltage = item.voltagem;
+      item.produto_id = productSelect.value;
+      item.voltagem = null;
+      if (entradaEstoqueHasDuplicate()) {
+        item.produto_id = previousProductId;
+        item.voltagem = previousVoltage;
+        setEntradaEstoqueFeedback('O mesmo produto e variante não pode aparecer duas vezes.', 'warning');
+      } else {
+        resetEntradaEstoqueConfirmation();
+        setEntradaEstoqueFeedback('');
+        saveEntradaEstoqueDraft();
+      }
+      renderEntradaEstoqueItems();
+      updateEntradaEstoqueControls();
+    });
+    row.appendChild(createEntradaEstoqueField(`Produto ${index + 1} *`, productSelect, 'entrada-estoque-item-product'));
+
+    if (selectedProduct?.tem_voltagem) {
+      const voltageSelect = document.createElement('select');
+      voltageSelect.disabled = entradaEstoqueDraft.retry_locked || entradaEstoqueSubmitting;
+      [['', 'Selecione...'], ['110v', '110V'], ['220v', '220V']].forEach(([value, labelText]) => {
+        const option = document.createElement('option');
+        option.value = value;
+        option.textContent = labelText;
+        voltageSelect.appendChild(option);
+      });
+      voltageSelect.value = item.voltagem || '';
+      voltageSelect.addEventListener('change', () => {
+        const previousVoltage = item.voltagem;
+        item.voltagem = voltageSelect.value || null;
+        if (entradaEstoqueHasDuplicate()) {
+          item.voltagem = previousVoltage;
+          setEntradaEstoqueFeedback('O mesmo produto e variante não pode aparecer duas vezes.', 'warning');
+        } else {
+          resetEntradaEstoqueConfirmation();
+          setEntradaEstoqueFeedback('');
+          saveEntradaEstoqueDraft();
+        }
+        renderEntradaEstoqueItems();
+        updateEntradaEstoqueControls();
+      });
+      row.appendChild(createEntradaEstoqueField('Voltagem *', voltageSelect));
+    } else {
+      const simple = document.createElement('div');
+      simple.className = 'entrada-estoque-balance';
+      const simpleLabel = document.createElement('span');
+      simpleLabel.textContent = 'Variante';
+      const simpleValue = document.createElement('strong');
+      simpleValue.textContent = selectedProduct ? 'Estoque simples' : '—';
+      simple.append(simpleLabel, simpleValue);
+      row.appendChild(simple);
+    }
+
+    const quantityInput = document.createElement('input');
+    quantityInput.type = 'number';
+    quantityInput.min = '1';
+    quantityInput.step = '1';
+    quantityInput.inputMode = 'numeric';
+    quantityInput.placeholder = '0';
+    quantityInput.value = String(item.quantidade || '');
+    quantityInput.disabled = entradaEstoqueDraft.retry_locked || entradaEstoqueSubmitting;
+    quantityInput.addEventListener('input', () => {
+      item.quantidade = quantityInput.value;
+      resetEntradaEstoqueConfirmation();
+      setEntradaEstoqueFeedback('');
+      saveEntradaEstoqueDraft();
+      const current = EntradaEstoqueCore.currentBalance(selectedProduct, item.voltagem);
+      const quantityText = String(item.quantidade || '').trim();
+      const validQuantity = /^[1-9][0-9]*$/.test(quantityText);
+      const preview = row.querySelector('[data-entrada-balance]');
+      if (preview) {
+        preview.textContent = selectedProduct && (!selectedProduct.tem_voltagem || item.voltagem)
+          ? `${current} → ${validQuantity ? current + Number(quantityText) : '—'}`
+          : '—';
+      }
+      updateEntradaEstoqueControls();
+    });
+    row.appendChild(createEntradaEstoqueField('Quantidade *', quantityInput));
+
+    const balance = document.createElement('div');
+    balance.className = 'entrada-estoque-balance';
+    const balanceLabel = document.createElement('span');
+    balanceLabel.textContent = 'Saldo atual → novo';
+    const balanceValue = document.createElement('strong');
+    balanceValue.dataset.entradaBalance = 'true';
+    const current = EntradaEstoqueCore.currentBalance(selectedProduct, item.voltagem);
+    const quantityText = String(item.quantidade || '').trim();
+    const validQuantity = /^[1-9][0-9]*$/.test(quantityText);
+    balanceValue.textContent = selectedProduct && (!selectedProduct.tem_voltagem || item.voltagem)
+      ? `${current} → ${validQuantity ? current + Number(quantityText) : '—'}`
+      : '—';
+    balance.append(balanceLabel, balanceValue);
+    row.appendChild(balance);
+
+    const removeButton = document.createElement('button');
+    removeButton.type = 'button';
+    removeButton.className = 'entrada-estoque-remove';
+    removeButton.textContent = 'Remover';
+    removeButton.disabled = entradaEstoqueDraft.retry_locked || entradaEstoqueSubmitting || entradaEstoqueDraft.itens.length === 1;
+    removeButton.addEventListener('click', () => removeEntradaEstoqueItem(item.row_id));
+    row.appendChild(removeButton);
+    container.appendChild(row);
+  });
+}
+
+function addEntradaEstoqueItem() {
+  if (!entradaEstoqueDraft || entradaEstoqueDraft.retry_locked || entradaEstoqueSubmitting) return;
+  if (entradaEstoqueDraft.itens.length >= 100) {
+    setEntradaEstoqueFeedback('A entrada aceita no máximo 100 itens.', 'warning');
+    return;
+  }
+  entradaEstoqueDraft.itens.push({
+    row_id: entradaEstoqueNextRowId++,
+    produto_id: '',
+    voltagem: null,
+    quantidade: ''
+  });
+  resetEntradaEstoqueConfirmation();
+  saveEntradaEstoqueDraft();
+  renderEntradaEstoqueItems();
+  updateEntradaEstoqueControls();
+}
+
+function removeEntradaEstoqueItem(rowId) {
+  if (!entradaEstoqueDraft || entradaEstoqueDraft.retry_locked || entradaEstoqueSubmitting) return;
+  entradaEstoqueDraft.itens = entradaEstoqueDraft.itens.filter(item => item.row_id !== rowId);
+  resetEntradaEstoqueConfirmation();
+  saveEntradaEstoqueDraft();
+  renderEntradaEstoqueItems();
+  updateEntradaEstoqueControls();
+}
+
+function updateEntradaEstoqueControls() {
+  if (!entradaEstoqueDraft) return;
+  const locked = entradaEstoqueDraft.retry_locked || entradaEstoqueSubmitting;
+  const modal = document.querySelector('#entrada-estoque-modal .entrada-estoque-modal');
+  modal?.classList.toggle('retry-locked', entradaEstoqueDraft.retry_locked);
+  const date = document.getElementById('entrada-estoque-data');
+  const reason = document.getElementById('entrada-estoque-motivo');
+  const add = document.getElementById('entrada-estoque-add');
+  const confirmation = document.getElementById('entrada-estoque-confirm');
+  const submit = document.getElementById('entrada-estoque-submit');
+  if (date) date.disabled = locked;
+  if (reason) reason.disabled = locked;
+  if (add) add.disabled = locked || entradaEstoqueDraft.itens.length >= 100;
+  if (confirmation) {
+    confirmation.disabled = locked;
+    confirmation.checked = Boolean(entradaEstoqueDraft.confirmado);
+  }
+  if (submit) {
+    submit.disabled = entradaEstoqueSubmitting || (!entradaEstoqueDraft.retry_locked && !entradaEstoqueDraft.confirmado);
+    submit.textContent = entradaEstoqueSubmitting
+      ? 'Registrando...'
+      : (entradaEstoqueDraft.retry_locked ? 'Tentar novamente' : 'Registrar entrada');
+  }
+  const discard = document.getElementById('entrada-estoque-discard');
+  if (discard) {
+    discard.hidden = entradaEstoqueDraft.retry_locked;
+    discard.disabled = locked;
+  }
+}
+
+async function submitEntradaEstoque() {
+  if (!entradaEstoqueDraft || entradaEstoqueSubmitting) return;
+  let args;
+  if (entradaEstoqueDraft.retry_locked) {
+    args = entradaEstoqueDraft.pending_args;
+    if (!args || args.p_chave_operacao !== entradaEstoqueDraft.chave_operacao) {
+      setEntradaEstoqueFeedback('A operação permanece bloqueada, mas os dados seguros para repetição não puderam ser recuperados. Não crie outra entrada para os mesmos itens.', 'warning');
+      return;
+    }
+  } else {
+    const validation = EntradaEstoqueCore.validateDraft(entradaEstoqueDraft, products);
+    if (!validation.ok) {
+      entradaEstoqueDraft.confirmado = false;
+      document.getElementById('entrada-estoque-confirm').checked = false;
+      saveEntradaEstoqueDraft();
+      updateEntradaEstoqueControls();
+      setEntradaEstoqueFeedback(validation.errors[0] || 'Revise os dados da entrada.', 'warning');
+      return;
+    }
+    if (!entradaEstoqueDraft.confirmado) {
+      setEntradaEstoqueFeedback('Marque a confirmação explícita antes de registrar.', 'warning');
+      return;
+    }
+    args = EntradaEstoqueCore.rpcArguments(validation.normalized);
+    entradaEstoqueDraft.pending_args = args;
+    entradaEstoqueDraft.retry_locked = true;
+    entradaEstoqueDraft.confirmado = true;
+    if (!saveEntradaEstoqueDraft()) {
+      entradaEstoqueDraft.retry_locked = false;
+      entradaEstoqueDraft.pending_args = null;
+      updateEntradaEstoqueControls();
+      return;
+    }
+  }
+
+  entradaEstoqueSubmitting = true;
+  setEntradaEstoqueFeedback('Registrando a entrada no estoque local...');
+  renderEntradaEstoqueItems();
+  updateEntradaEstoqueControls();
+
+  try {
+    const response = await EntradaEstoqueCore.callWithTimeout(
+      params => sb.rpc('registrar_entrada_estoque', params),
+      args,
+      ENTRADA_ESTOQUE_TIMEOUT_MS
+    );
+    if (!response || typeof response !== 'object') {
+      throw new Error('A resposta do servidor foi interrompida. O resultado da operação é incerto.');
+    }
+    const { data, error } = response;
+    if (error) {
+      throw EntradaEstoqueCore.rpcErrorFromResponse(error, response.status);
+    }
+    if (!EntradaEstoqueCore.isValidRpcResult(data, args)) {
+      throw new Error('O servidor retornou uma resposta inesperada. O resultado da operação é incerto.');
+    }
+
+    let reloadFailed = false;
+    try {
+      await Promise.all([
+        loadProducts({ throwOnError: true }),
+        loadHistory({ throwOnError: true })
+      ]);
+    } catch (reloadError) {
+      reloadFailed = true;
+      console.error('A entrada foi registrada, mas a releitura falhou', reloadError);
+    }
+
+    const repeated = Array.isArray(data) && data.some(item => item.repetida === true);
+    sessionStorage.removeItem(ENTRADA_ESTOQUE_STORAGE_KEY);
+    entradaEstoqueDraft = null;
+    entradaEstoqueSubmitting = false;
+    closeEntradaEstoqueModal();
+    refreshEntradaEstoqueButton();
+    showToast(
+      reloadFailed ? 'yellow' : 'green',
+      reloadFailed
+        ? 'Entrada confirmada pelo servidor. Recarregue a página para atualizar produtos e histórico.'
+        : (repeated ? 'Entrada já registrada anteriormente; estoque recarregado sem somar novamente.' : 'Entrada registrada e estoque local recarregado.')
+    );
+  } catch (error) {
+    entradaEstoqueSubmitting = false;
+    entradaEstoqueDraft = EntradaEstoqueCore.draftAfterFailure(entradaEstoqueDraft, error);
+    if (!entradaEstoqueDraft.retry_locked) {
+      saveEntradaEstoqueDraft({ announceFailure: false });
+      setEntradaEstoqueFeedback(`${error?.message || 'Não foi possível registrar a entrada.'} O servidor confirmou que nenhuma escrita foi realizada; revise os dados ou descarte o rascunho.`, 'warning');
+    } else {
+      entradaEstoqueDraft.retry_locked = true;
+      entradaEstoqueDraft.confirmado = true;
+      saveEntradaEstoqueDraft({ announceFailure: false });
+      setEntradaEstoqueFeedback('Não foi possível confirmar o resultado. A operação continua bloqueada; use “Tentar novamente” com a mesma chave e os mesmos dados.', 'warning');
+    }
+    renderEntradaEstoqueItems();
+    updateEntradaEstoqueControls();
+  }
+}
+// END ENTRADA_ESTOQUE_UI
 
 function thumbHTML(p, size) {
   size = size || 44;
@@ -4027,15 +4802,18 @@ function renderCsvLots() {
   renderCsvLotsPagination();
 }
 
-async function loadHistory() {
-  const { data } = await sb.from('historico').select('*, produtos(nome, imagem_url)').order('created_at', { ascending: false }).limit(200);
+async function loadHistory({ throwOnError = false } = {}) {
+  const { data, error } = await sb.from('historico').select('*, produtos(nome, imagem_url)').order('created_at', { ascending: false }).limit(200);
+  if (error && throwOnError) throw error;
   historyRows = data || [];
   renderHistory();
   renderDashboardResolverToday();
+  return { data: historyRows, error: error || null };
 }
 
 function historyRowType(row) {
   const tipo = String(row.tipo || '');
+  if (tipo === 'entrada_mercadoria') return 'entrada_mercadoria';
   if (tipo === 'baixa_csv_produto') return 'csv';
   if (tipo === 'baixa_manual_produto') return 'manual';
   if (isBaixaTipo(tipo)) return 'baixa';
@@ -4050,8 +4828,8 @@ function updateHistorySummary(rows) {
   const cards = document.querySelectorAll('#history-summary-grid .history-summary-card strong');
   if (!cards.length) return;
 
-  const entradas = rows.filter(row => historyRowType(row) === 'entrada').reduce((sum, row) => sum + historyRowDelta(row), 0);
-  const baixas = rows.filter(row => historyRowType(row) !== 'entrada').reduce((sum, row) => sum + historyRowDelta(row), 0);
+  const entradas = rows.filter(row => ['entrada', 'entrada_mercadoria'].includes(historyRowType(row))).reduce((sum, row) => sum + historyRowDelta(row), 0);
+  const baixas = rows.filter(row => ['baixa', 'csv', 'manual'].includes(historyRowType(row))).reduce((sum, row) => sum + historyRowDelta(row), 0);
   const totalPecas = rows.reduce((sum, row) => sum + historyRowDelta(row), 0);
 
   cards[0].textContent = rows.length;
@@ -4071,7 +4849,7 @@ function getFilteredHistoryRows() {
       (r.usuario || '').toLowerCase().includes(q) ||
       (r.vendedor || '').toLowerCase().includes(q);
     const rowType = historyRowType(r);
-    const matchesType = !typeFilter || rowType === typeFilter || (typeFilter === 'baixa' && rowType !== 'entrada');
+    const matchesType = !typeFilter || rowType === typeFilter || (typeFilter === 'baixa' && ['baixa', 'csv', 'manual'].includes(rowType));
     const matchesPeriod = !since || new Date(r.created_at) >= since;
     return matchesSearch && matchesType && matchesPeriod;
   });
@@ -4079,6 +4857,7 @@ function getFilteredHistoryRows() {
 
 function historyTypeLabel(row) {
   const type = historyRowType(row);
+  if (type === 'entrada_mercadoria') return 'Entrada de mercadoria';
   if (type === 'csv') return 'Baixa CSV';
   if (type === 'manual') return 'Baixa manual';
   if (type === 'baixa') return 'Baixa';
@@ -4093,13 +4872,18 @@ function renderHistory() {
   el.innerHTML = rows.map(r => {
     const up = r.quantidade_nova >= r.quantidade_anterior;
     const isBaixa = isBaixaTipo(r.tipo);
+    const isEntradaMercadoria = historyRowType(r) === 'entrada_mercadoria';
     const time = new Date(r.created_at).toLocaleString('pt-BR');
     const thumb = r.produtos?.imagem_url
       ? `<img src="${r.produtos.imagem_url}" style="width:36px;height:36px;border-radius: 4px;object-fit:cover;border:1px solid var(--border);flex-shrink:0" onerror="this.style.display='none'">`
       : `<div style="width:36px;height:36px;border-radius: 4px;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">📦</div>`;
     const voltTag = r.voltagem ? `<span class="volt-tag" style="margin-left:6px">${r.voltagem}</span>` : '';
-    const tipoTag = isBaixa ? `<span class="history-type-tag">Baixa</span>` : '';
-    const quemTexto = isBaixa ? `vendido por ${r.vendedor || r.usuario || '—'}` : `por ${r.usuario || 'Funcionário'}`;
+    const tipoTag = isBaixa
+      ? `<span class="history-type-tag">Baixa</span>`
+      : (isEntradaMercadoria ? `<span class="history-type-tag entrada">Entrada de mercadoria</span>` : '');
+    const quemTexto = isBaixa
+      ? `vendido por ${r.vendedor || r.usuario || '—'}`
+      : (isEntradaMercadoria ? `entrada registrada por ${r.usuario || 'Administrador'}` : `por ${r.usuario || 'Funcionário'}`);
     return `<div class="history-item">
       ${thumb}
       <div class="history-icon ${isBaixa ? 'baixa' : (up ? 'up' : 'down')}">${isBaixa ? '↓' : (up ? '▲' : '▼')}</div>

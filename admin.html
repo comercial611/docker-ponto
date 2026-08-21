@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Estoque - Administração</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<link rel="stylesheet" href="css/admin.css?v=20260818-futura-codes-1">
+<link rel="stylesheet" href="css/admin.css?v=20260821-entrada-estoque-1">
 </head>
 <body>
 
@@ -127,6 +127,14 @@
 
   <!-- PRODUTOS -->
   <div class="tab-content" id="tab-produtos">
+    <section class="entrada-estoque-callout" aria-labelledby="entrada-estoque-callout-title">
+      <div>
+        <h2 id="entrada-estoque-callout-title">Entrada de mercadoria</h2>
+        <p>Registre vários produtos em uma única operação auditada no estoque local.</p>
+      </div>
+      <button type="button" class="btn-register-entry" id="btn-open-entrada-estoque" onclick="openEntradaEstoqueModal()">Registrar entrada</button>
+    </section>
+
     <div class="form-card product-form-card">
       <div class="form-title" id="form-title">Cadastrar produto</div>
 
@@ -599,7 +607,8 @@
         </select>
         <select class="filter-select" id="filter-historico-tipo" onchange="renderHistory()">
           <option value="">Todos os tipos</option>
-          <option value="entrada">Entradas / contagens</option>
+          <option value="entrada_mercadoria">Entradas de mercadoria</option>
+          <option value="entrada">Contagens / outras entradas</option>
           <option value="baixa">Baixas</option>
           <option value="csv">Baixas CSV</option>
           <option value="manual">Baixas manuais</option>
@@ -668,6 +677,56 @@
       <button class="btn-save" id="nuvemshop-pilot-run" onclick="runNuvemshopPilotReadiness()">Verificar protecoes</button>
       <button class="btn-save" id="nuvemshop-pilot-apply" onclick="runNuvemshopPilotApplication()" disabled>Aplicar 1 item</button>
       <button class="btn-cancel" onclick="closeNuvemshopPilotModal()">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL ENTRADA DE MERCADORIA -->
+<div class="modal-overlay" id="entrada-estoque-modal" role="dialog" aria-modal="true" aria-labelledby="entrada-estoque-title" aria-describedby="entrada-estoque-description" aria-hidden="true">
+  <div class="modal entrada-estoque-modal">
+    <div class="entrada-estoque-modal-header">
+      <div>
+        <div class="modal-title" id="entrada-estoque-title">Registrar entrada de mercadoria</div>
+        <p id="entrada-estoque-description">A entrada soma somente no estoque físico local. Todos os itens serão gravados juntos.</p>
+      </div>
+      <button type="button" class="entrada-estoque-close" aria-label="Fechar e continuar depois" onclick="closeEntradaEstoqueModal()">&times;</button>
+    </div>
+
+    <div class="entrada-estoque-key">
+      <span>Chave desta operação</span>
+      <code id="entrada-estoque-chave"></code>
+    </div>
+
+    <div class="entrada-estoque-fields">
+      <div class="form-field">
+        <label for="entrada-estoque-data">Data do movimento *</label>
+        <input type="date" id="entrada-estoque-data" oninput="updateEntradaEstoqueHeader()">
+      </div>
+      <div class="form-field">
+        <label for="entrada-estoque-motivo">Motivo *</label>
+        <textarea id="entrada-estoque-motivo" rows="3" maxlength="500" placeholder="Ex: recebimento da nota fiscal 1234" oninput="updateEntradaEstoqueHeader()"></textarea>
+      </div>
+    </div>
+
+    <div class="entrada-estoque-items-heading">
+      <div>
+        <h3>Itens da entrada</h3>
+        <p>Escolha o produto, a voltagem quando houver e a quantidade recebida.</p>
+      </div>
+      <button type="button" class="btn-cancel" id="entrada-estoque-add" onclick="addEntradaEstoqueItem()">Adicionar produto</button>
+    </div>
+    <div class="entrada-estoque-items" id="entrada-estoque-items"></div>
+
+    <label class="entrada-estoque-confirmation">
+      <input type="checkbox" id="entrada-estoque-confirm" onchange="updateEntradaEstoqueConfirmation()">
+      <span>Confirmo a data, o motivo e todos os itens desta entrada no estoque local.</span>
+    </label>
+
+    <div class="entrada-estoque-feedback" id="entrada-estoque-feedback" role="alert" aria-live="assertive"></div>
+    <div class="entrada-estoque-actions">
+      <button type="button" class="btn-save" id="entrada-estoque-submit" onclick="submitEntradaEstoque()">Registrar entrada</button>
+      <button type="button" class="btn-cancel" onclick="closeEntradaEstoqueModal()">Fechar e continuar depois</button>
+      <button type="button" class="entrada-estoque-discard" id="entrada-estoque-discard" onclick="discardEntradaEstoque()">Descartar rascunho</button>
     </div>
   </div>
 </div>
@@ -822,6 +881,6 @@
 <script src="js/produto-busca.js?v=20260725-tags-fornecedor-1"></script>
 <script src="js/admin-nuvemshop-auditoria.js?v=20260724-admin-auditoria-1"></script>
 <script src="js/admin-notificacoes.js?v=20260725-seguranca-notificacoes-1"></script>
-<script src="js/admin.js?v=20260818-futura-codes-1"></script>
+<script src="js/admin.js?v=20260821-entrada-estoque-1"></script>
 </body>
 </html>
