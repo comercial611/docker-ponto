@@ -112,3 +112,56 @@ O rollback reduz a seguranca e deve ser usado apenas em emergencia.
 - A futura migration 34 de redacao LGPD devera adaptar a RPC `concluir_tentativa_oauth_nuvemshop`: sob o mesmo lock e na mesma transacao, somente tentativa com `criado_em > redigida_em` podera reinstalar uma conexao redigida.
 - Tentativa criada antes ou no mesmo instante da redacao devera falhar sem gravar token nem limpar a redacao.
 - A migration LGPD experimental existente em outra branch devera ser renumerada para a migration 34 e adaptada depois das migrations 29, 30, 31, 32 e 33.
+
+## Estoque intradiario — planejado / ainda nao implementado
+
+Esta secao e somente arquitetural. Nenhuma tabela, RPC, Edge Function ou
+permissao descrita abaixo existe por causa desta documentacao, e nenhuma
+migration deve ser criada ou aplicada nesta etapa.
+
+O CSV consolidado diario continua sendo a unica baixa oficial do estoque local.
+Vendas nas lojas `3514029` e `6696910` reduzem apenas o remoto durante o dia e
+aguardam o CSV seguinte; diferencas remotas sem uma causa local nao autorizam
+reposicao. As duas lojas compartilham um estoque fisico unico.
+
+Uma futura entrada sera uma operacao transacional e auditada, com quantidade
+positiva, motivo, usuario, data, itens e voltagem. Ela somara no Docker e
+publicara a mesma entrada fisica para cada loja, sem dividir quantidade. Cada
+vinculo usara seu `unidades_por_venda`, e 110V/220V continuarao independentes.
+
+Um ajuste manual ou zeragem exigira motivo, auditoria, chave de idempotencia e
+confirmacao humana. Se o produto acabou somente por vendas ainda pendentes do
+CSV, a disponibilidade externa podera ser zerada em operacao explicita, mas o
+saldo local aguardara a baixa oficial; nao havera uma segunda baixa local
+estimada.
+
+A previa generica deve permanecer diagnostica. Um item `aguardando CSV` nao
+pode abrir uma escrita. A escrita futura seguira a cadeia causal:
+
+```text
+operacao causal -> outbox por operacao/loja/item -> confirmacao humana
+-> janela temporaria -> releitura e confirmacao
+```
+
+Toda escrita externa sera manual, temporaria, auditada e isolada por
+`store_id`. Uma pausa ou emergencia sera registrada no servidor com motivo,
+usuario e data; pausar uma loja nao altera o estado da outra.
+
+O desenho futuro devera manter separados preços, CSV, catalogo, OAuth, LGPD e
+sincronizacao normal. Cada PR de implementação deverá atualizar este README,
+o README raiz e `docs/ARQUITETURA.md`.
+
+### Roadmap planejado
+
+1. Documentação e invariantes.
+2. Ledger de entrada local.
+3. Ajuste e zeragem.
+4. Pausa por loja.
+5. Outbox e autorizações.
+6. Prévia intradiária.
+7. Piloto em uma loja.
+8. Segunda loja, falhas e retry.
+9. Reconciliação pós-CSV.
+
+Enquanto esse roadmap não for implementado e validado, não executar SQL,
+publicar Function nem habilitar escrita externa para esse fluxo.

@@ -84,3 +84,47 @@ nao substitui o cadastro fisico local.
 O Dashboard administrativo apenas prioriza pendencias e sugere reposicao ate o
 minimo cadastrado; ele nao altera estoque. A baixa oficial continua sendo feita
 somente pelo CSV final consolidado.
+
+## Estoque intradiario — planejado / ainda nao implementado
+
+Esta secao descreve uma arquitetura futura. Nenhum dos fluxos abaixo esta
+disponivel como funcionalidade hoje.
+
+- O CSV consolidado diario continua sendo a unica baixa oficial do estoque
+  local. Ele nao deve ser reaplicado para representar uma venda remota ja
+  observada.
+- Vendas ocorridas nas lojas Nuvemshop `3514029` e `6696910` reduzem somente o
+  estoque remoto durante o dia e aguardam o CSV seguinte. Uma diferenca remota
+  sem causa local nao pode disparar reposicao automatica.
+- As duas lojas compartilham um unico estoque fisico. Uma futura entrada
+  auditada somara no Docker e publicara a mesma entrada fisica em cada loja,
+  nunca dividindo a quantidade entre elas. `unidades_por_venda` e as voltagens
+  110V/220V serao tratados por item e por loja.
+- Ajuste manual e zeragem exigirao motivo, auditoria, idempotencia e
+  confirmacao humana. Uma zeragem causada apenas por vendas ainda pendentes do
+  CSV podera zerar a disponibilidade externa, mas o estoque local aguardara o
+  fechamento oficial; nenhuma segunda baixa local sera estimada.
+- A previa generica continuara diagnostica. Uma diferenca classificada como
+  `aguardando CSV` nao podera autorizar escrita.
+- Publicacoes futuras seguirao: operacao causal -> outbox por
+  operacao/loja/item -> confirmacao humana -> janela temporaria -> releitura e
+  confirmacao. Escrita externa nunca sera automatica.
+- A pausa ou emergencia sera individual por loja, validada no servidor e
+  auditada com motivo, usuario e data. Pausar uma loja nao afetara a outra.
+- Precos, CSV, catalogo, OAuth e LGPD permanecem separados desse fluxo.
+
+### Roadmap planejado
+
+1. Documentar invariantes.
+2. Criar ledger de entrada local.
+3. Criar ajuste e zeragem auditados.
+4. Criar pausa individual por loja.
+5. Criar outbox e autorizacoes temporarias.
+6. Criar previa intradiaria causal.
+7. Testar piloto em uma loja.
+8. Adicionar segunda loja, falhas e retry.
+9. Criar reconciliação pós-CSV.
+
+Cada PR futura deverá atualizar este arquivo, `supabase/README.md` e
+`docs/ARQUITETURA.md`. Até lá, não há migration, RPC, Edge Function ou escrita
+externa intradiaria para executar.
