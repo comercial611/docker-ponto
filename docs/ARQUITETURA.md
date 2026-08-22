@@ -2,7 +2,7 @@
 
 Este documento registra como o sistema esta organizado, quais componentes sao
 responsaveis por cada regra e quais cuidados devem orientar a evolucao do
-projeto. Ele descreve o estado consolidado em julho de 2026.
+projeto. Ele descreve o estado consolidado em agosto de 2026.
 
 ## 1. Objetivo e principios
 
@@ -55,6 +55,7 @@ Responsabilidades:
 
 - dashboard e consulta geral;
 - cadastro e edicao de produtos;
+- entrada de mercadoria em lote, auditada e restrita ao estoque local;
 - separacao entre produtos e maquinas/prensas;
 - importacao e baixa por CSV;
 - gestao de vendedores;
@@ -253,6 +254,11 @@ local de estoque confirmado da respectiva loja.
 - `baixas_csv_lotes`
 - `baixas_csv_itens`
 
+### Ledger de entrada local
+
+- `estoque_operacoes`
+- `estoque_operacao_itens`
+
 ### Tabelas da Nuvemshop
 
 - `nuvemshop_conexoes`
@@ -334,19 +340,26 @@ Uma futura migracao de interface nao deve reescrever as regras de negocio. As
 funcoes seguras, auditorias e contratos do backend devem continuar sendo a base
 estavel do sistema.
 
-## 11. Estoque intradiario — planejado / ainda nao implementado
+## 11. Estoque intradiario — entrada local implementada
 
-Esta secao e uma especificacao futura e nao descreve funcionalidade disponivel
-na versao atual. O CSV consolidado diario continua sendo a unica baixa oficial
-do estoque local. Vendas nas lojas Nuvemshop `3514029` e `6696910` reduzem
-somente o remoto durante o dia e aguardam o CSV seguinte; uma diferenca remota
-sem causa local nunca pode gerar reposicao automatica.
+A migration 34 e a aba Produtos implementam a primeira operacao intradiaria:
+entrada de mercadoria em lote no estoque local. A operacao usa UUID
+idempotente, motivo e data obrigatorios, valida todos os itens e variantes e
+grava ledger, novos saldos e historico na mesma transacao. Uma falha provoca
+rollback total. O frontend preserva a mesma chave e o mesmo lote no
+`sessionStorage` quando a resposta de rede e incerta.
+
+O CSV consolidado diario continua sendo a unica baixa oficial do estoque
+local. Vendas nas lojas Nuvemshop `3514029` e `6696910` reduzem somente o remoto
+durante o dia e aguardam o CSV seguinte; uma diferenca remota sem causa local
+nunca pode gerar reposicao automatica.
 
 ### Separacao das movimentacoes
 
-- **Entrada:** futura operacao causal com quantidade positiva, motivo, usuario,
-  data, itens e voltagem. Soma no Docker e publica a mesma entrada fisica em
-  cada loja, sem dividir quantidade entre elas.
+- **Entrada:** operacao causal disponivel com quantidade positiva, motivo,
+  usuario, data, itens e voltagem. Nesta etapa soma somente no Docker. A futura
+  publicacao externa devera refletir a mesma entrada fisica em cada loja, sem
+  dividir quantidade entre elas.
 - **Ajuste manual:** futura operacao explicita, com saldo alvo ou delta,
   motivo obrigatorio, auditoria e chave de idempotencia. Zeragem multitem deve
   ser atomica: todos os itens ou nenhum.
@@ -362,12 +375,16 @@ CSV. Assim, nenhuma segunda baixa local sera estimada. Um saldo alvo local que
 possa incorporar vendas pendentes nao deve ser aplicado antes do fechamento;
 ajustes intradiarios precisam declarar causa independente do CSV.
 
-### Modelo futuro
+### Modelo atual e extensoes futuras
 
-O desenho recomendado e composto por:
+O modelo atual e composto por:
 
 - `estoque_operacoes` e `estoque_operacao_itens`, com lock deterministico,
-  motivo, operador, antes/depois e chave de idempotencia;
+  motivo, operador, antes/depois, referencia ao historico e chave de
+  idempotencia.
+
+As extensoes ainda planejadas sao:
+
 - `nuvemshop_publicacoes_intradia` por operacao e loja;
 - `nuvemshop_publicacao_intradia_itens` por operacao, loja e vinculo;
 - registro de residuos para preservar quantidades fisicas menores que
@@ -408,8 +425,8 @@ e este documento antes de ser encerrada.
 
 ### Roadmap planejado
 
-1. Documentação e invariantes.
-2. Ledger de entrada local.
+1. Documentação e invariantes. **Concluido.**
+2. Ledger e interface de entrada local. **Concluido na migration 34.**
 3. Ajuste e zeragem.
 4. Pausa por loja.
 5. Outbox e autorizações.
@@ -417,6 +434,11 @@ e este documento antes de ser encerrada.
 7. Piloto em uma loja.
 8. Segunda loja, falhas e retry.
 9. Reconciliação pós-CSV.
+
+Publicacao intradiaria na Nuvemshop, outbox, pausas, janelas, ajuste, zeragem e
+reconciliacao pos-CSV continuam planejados e nao implementados. A migration 34
+nao cria Edge Function, preview externo, outbox ou qualquer chamada a
+Nuvemshop.
 
 ## 12. Fora do escopo atual
 

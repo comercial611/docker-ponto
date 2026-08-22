@@ -243,8 +243,8 @@ assert.equal(expectedAdminFinalUrl.includes("iv"), false);
 assert.equal(expectedAdminFinalUrl.includes("store_id"), false);
 assert.equal(expectedAdminFinalUrl.includes("erro"), false);
 assert.match(readme, /criado_em > redigida_em/);
-assert.match(readme, /A futura migration 33 de redacao LGPD/);
-assert.match(readme, /renumerada para um numero posterior a 32/);
+assert.match(readme, /A migration 34 implementa somente a primeira etapa/);
+assert.match(readme, /A futura migration 35 de redacao LGPD/);
 
 assert.equal(canStartOAuth(true, "admin"), true);
 assert.equal(canStartOAuth(false, "admin"), false);

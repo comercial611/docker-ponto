@@ -37,6 +37,7 @@ Esta pasta documenta a configuracao de seguranca usada no Supabase de producao.
 31. `31-bloquear-reaplicacao-csv-por-arquivo.sql`
 32. `32-oauth-state-nuvemshop.sql`
 33. `33-desativacao-auditada-vinculos-nuvemshop.sql`
+34. `34-registrar-entrada-estoque.sql`
 
 ## O que foi protegido
 
@@ -86,6 +87,7 @@ Esta pasta documenta a configuracao de seguranca usada no Supabase de producao.
 - `31-bloquear-reaplicacao-csv-por-arquivo.sql`: identifica o CSV pelo hash do arquivo em toda a historico, bloqueia reaplicacao com qualquer data de movimento e preserva a operacao atomica.
 - `32-oauth-state-nuvemshop.sql`: registra somente o hash SHA-256 das tentativas OAuth, limita cada state a dez minutos e uso unico, reserva callbacks atomicamente e conclui a tentativa junto com a conexao na mesma transacao.
 - `33-desativacao-auditada-vinculos-nuvemshop.sql`: substitui a desativacao direta de vinculos por uma RPC transacional exclusiva do servidor, com auditoria por loja; o navegador deixa de ter permissao de atualizar ou excluir vinculos. A Edge Function confirma a ausencia remota antes do caminho de vinculo quebrado; o caminho manual exige motivo administrativo. Nenhum dos dois altera estoque, CSV, preco, catalogo externo ou outro vinculo.
+- `34-registrar-entrada-estoque.sql`: cria o ledger imutavel de entradas locais e a RPC administrativa atomica e idempotente para somar varios produtos ou variantes. O navegador nao grava diretamente no ledger; a operacao, seus itens, os saldos e o historico `entrada_mercadoria` confirmam juntos ou sofrem rollback. Nao consulta nem altera Nuvemshop, CSV, preco, catalogo ou vinculos.
 - `functions/nuvemshop-oauth-iniciar`: permite somente a administradores autenticados iniciar uma autorizacao, gera o state no servidor e retorna a URL oficial da Nuvemshop.
 - `functions/nuvemshop-oauth`: exige e consome o state antes de trocar o code, conclui a instalacao por RPC transacional e salva somente o token criptografado, sem exibir a credencial.
 - `functions/nuvemshop-lgpd`: recebe os tres webhooks obrigatorios de privacidade e valida a assinatura da Nuvemshop.
@@ -109,25 +111,29 @@ O rollback reduz a seguranca e deve ser usado apenas em emergencia.
 - `SUPABASE_URL` e a unica origem permitida para construir o redirecionamento final limpo. A URL inicial com `code` e `state` inevitavelmente chega ao callback; a implementacao remove esses parametros da URL final, mas nao controla eventuais logs automaticos da infraestrutura.
 - O cookie temporario do callback transporta somente uma mensagem visual de allowlist fixa. Ele nao autoriza operacoes, nao contem credenciais e e removido depois da leitura valida ou invalida.
 - A migration 32 nao depende de `nuvemshop_conexoes.redigida_em`, pois essa coluna ainda nao integra a sequencia oficial.
-- A futura migration 34 de redacao LGPD devera adaptar a RPC `concluir_tentativa_oauth_nuvemshop`: sob o mesmo lock e na mesma transacao, somente tentativa com `criado_em > redigida_em` podera reinstalar uma conexao redigida.
+- A futura migration 35 de redacao LGPD devera adaptar a RPC `concluir_tentativa_oauth_nuvemshop`: sob o mesmo lock e na mesma transacao, somente tentativa com `criado_em > redigida_em` podera reinstalar uma conexao redigida.
 - Tentativa criada antes ou no mesmo instante da redacao devera falhar sem gravar token nem limpar a redacao.
-- A migration LGPD experimental existente em outra branch devera ser renumerada para a migration 34 e adaptada depois das migrations 29, 30, 31, 32 e 33.
+- A migration LGPD experimental existente em outra branch devera ser renumerada para a migration 35 e adaptada depois das migrations 29, 30, 31, 32, 33 e 34.
 
-## Estoque intradiario — planejado / ainda nao implementado
+## Estoque intradiario — entrada local implementada
 
-Esta secao e somente arquitetural. Nenhuma tabela, RPC, Edge Function ou
-permissao descrita abaixo existe por causa desta documentacao, e nenhuma
-migration deve ser criada ou aplicada nesta etapa.
+A migration 34 implementa somente a primeira etapa: `estoque_operacoes`,
+`estoque_operacao_itens` e `registrar_entrada_estoque`. A RPC exige
+administrador autenticado, valida e bloqueia os produtos em ordem, soma somente
+o campo de estoque correspondente e registra ledger e historico na mesma
+transacao. Repetir a mesma UUID com o mesmo payload retorna o resultado ja
+gravado; reutiliza-la com outro payload falha.
 
 O CSV consolidado diario continua sendo a unica baixa oficial do estoque local.
 Vendas nas lojas `3514029` e `6696910` reduzem apenas o remoto durante o dia e
 aguardam o CSV seguinte; diferencas remotas sem uma causa local nao autorizam
 reposicao. As duas lojas compartilham um estoque fisico unico.
 
-Uma futura entrada sera uma operacao transacional e auditada, com quantidade
-positiva, motivo, usuario, data, itens e voltagem. Ela somara no Docker e
-publicara a mesma entrada fisica para cada loja, sem dividir quantidade. Cada
-vinculo usara seu `unidades_por_venda`, e 110V/220V continuarao independentes.
+A entrada atual e uma operacao transacional e auditada, com quantidade positiva,
+motivo, usuario, data, itens e voltagem. Ela soma somente no Docker. Uma etapa
+futura podera publicar a mesma entrada fisica para cada loja, sem dividir
+quantidade. Cada vinculo usara seu `unidades_por_venda`, e 110V/220V
+continuarao independentes.
 
 Um ajuste manual ou zeragem exigira motivo, auditoria, chave de idempotencia e
 confirmacao humana. Se o produto acabou somente por vendas ainda pendentes do
@@ -153,8 +159,8 @@ o README raiz e `docs/ARQUITETURA.md`.
 
 ### Roadmap planejado
 
-1. Documentação e invariantes.
-2. Ledger de entrada local.
+1. Documentação e invariantes. **Concluido.**
+2. Ledger e interface de entrada local. **Concluido na migration 34.**
 3. Ajuste e zeragem.
 4. Pausa por loja.
 5. Outbox e autorizações.
@@ -163,5 +169,7 @@ o README raiz e `docs/ARQUITETURA.md`.
 8. Segunda loja, falhas e retry.
 9. Reconciliação pós-CSV.
 
-Enquanto esse roadmap não for implementado e validado, não executar SQL,
-publicar Function nem habilitar escrita externa para esse fluxo.
+Publicacao intradiaria na Nuvemshop, outbox, pausas, janelas, ajuste, zeragem e
+reconciliacao pos-CSV continuam planejados e nao implementados. Nao publicar
+Function nem habilitar escrita externa para esse fluxo por causa da migration
+34.
