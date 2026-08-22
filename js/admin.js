@@ -47,6 +47,45 @@ const EntradaEstoqueCore = (() => {
     return Number.isInteger(balance) && balance >= 0 ? balance : 0;
   }
 
+  function normalizeProductSearchText(value) {
+    return String(value ?? '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLocaleLowerCase('pt-BR')
+      .trim();
+  }
+
+  function productSearchFields(product) {
+    if (!product || typeof product !== 'object') return [];
+    return [
+      product.nome,
+      product.codigo_interno,
+      product.codigo_referencia,
+      product.sku,
+      product.codigo_barras,
+      product.codigo_fabricante_110v,
+      product.codigo_fabricante_220v,
+      product.codigo_interno_110v,
+      product.codigo_interno_220v,
+      product.codigo_referencia_110v,
+      product.codigo_referencia_220v,
+      product.codigo_barras_110v,
+      product.codigo_barras_220v
+    ]
+      .map(normalizeProductSearchText)
+      .filter(Boolean);
+  }
+
+  function searchActiveProducts(productList, query, limit = 8) {
+    const normalizedQuery = normalizeProductSearchText(query);
+    if (!normalizedQuery) return [];
+    const maxResults = Number.isInteger(limit) && limit > 0 ? limit : 8;
+    return (Array.isArray(productList) ? productList : [])
+      .filter(product => product?.ativo === true)
+      .filter(product => productSearchFields(product).some(field => field.includes(normalizedQuery)))
+      .slice(0, maxResults);
+  }
+
   function validateDraft(draft, productList, today = localDateString()) {
     const errors = [];
     const reason = String(draft?.motivo || '').trim();
@@ -263,9 +302,12 @@ const EntradaEstoqueCore = (() => {
     isValidRpcResult,
     loadDraft,
     localDateString,
+    normalizeProductSearchText,
+    productSearchFields,
     rpcErrorFromResponse,
     rpcArguments,
     saveDraft,
+    searchActiveProducts,
     selectDraftForOpen,
     validateDraft
   };
@@ -364,6 +406,8 @@ let entradaEstoqueSubmitting = false;
 let entradaEstoquePreviousFocus = null;
 let entradaEstoqueNextRowId = 1;
 let entradaEstoqueInitialized = false;
+const ENTRADA_ESTOQUE_SEARCH_RESULT_LIMIT = 8;
+const entradaEstoqueSearchStates = new Map();
 
 
 // Estado do painel de baixa
@@ -660,6 +704,43 @@ function entradaEstoqueProductLabel(product) {
   return code ? `${product.nome} — ${code}` : `${product.nome} — ID ${product.id}`;
 }
 
+function entradaEstoqueProductCodeLabels(product) {
+  const labels = [
+    ['Interno', product?.codigo_interno],
+    ['Referência', product?.codigo_referencia],
+    ['Barras/SKU', product?.sku],
+    ['Barras', product?.codigo_barras],
+    ['Fabricante 110V', product?.codigo_fabricante_110v],
+    ['Fabricante 220V', product?.codigo_fabricante_220v],
+    ['Interno 110V', product?.codigo_interno_110v],
+    ['Interno 220V', product?.codigo_interno_220v],
+    ['Referência 110V', product?.codigo_referencia_110v],
+    ['Referência 220V', product?.codigo_referencia_220v],
+    ['Barras 110V', product?.codigo_barras_110v],
+    ['Barras 220V', product?.codigo_barras_220v]
+  ];
+  return labels
+    .filter(([, value]) => String(value || '').trim())
+    .map(([label, value]) => `${label}: ${String(value).trim()}`);
+}
+
+function getEntradaEstoqueSearchState(rowId) {
+  if (!entradaEstoqueSearchStates.has(rowId)) {
+    entradaEstoqueSearchStates.set(rowId, { activeIndex: -1, open: false, query: '' });
+  }
+  return entradaEstoqueSearchStates.get(rowId);
+}
+
+function focusEntradaEstoqueSearch(rowId, caretPosition = null) {
+  requestAnimationFrame(() => {
+    const input = document.getElementById(`entrada-estoque-product-search-${rowId}`);
+    input?.focus();
+    if (Number.isInteger(caretPosition) && typeof input?.setSelectionRange === 'function') {
+      input.setSelectionRange(caretPosition, caretPosition);
+    }
+  });
+}
+
 function entradaEstoqueHasDuplicate(items = entradaEstoqueDraft?.itens || []) {
   const targets = new Set();
   for (const item of items) {
@@ -692,48 +773,173 @@ function renderEntradaEstoqueItems() {
     row.className = 'entrada-estoque-item';
     row.dataset.rowId = String(item.row_id);
 
-    const productSelect = document.createElement('select');
-    productSelect.disabled = entradaEstoqueDraft.retry_locked || entradaEstoqueSubmitting;
-    const placeholder = document.createElement('option');
-    placeholder.value = '';
-    placeholder.textContent = 'Selecione...';
-    productSelect.appendChild(placeholder);
-    activeProducts.forEach(product => {
-      const option = document.createElement('option');
-      option.value = String(product.id);
-      option.textContent = entradaEstoqueProductLabel(product);
-      productSelect.appendChild(option);
-    });
     const selectedProduct = products.find(product => String(product.id) === String(item.produto_id));
-    if (item.produto_id && selectedProduct && selectedProduct.ativo !== true) {
-      const unavailable = document.createElement('option');
-      unavailable.value = String(selectedProduct.id);
-      unavailable.textContent = `${entradaEstoqueProductLabel(selectedProduct)} — inativo`;
-      unavailable.disabled = true;
-      productSelect.appendChild(unavailable);
+    const productField = document.createElement('div');
+    productField.className = 'form-field entrada-estoque-item-product';
+    const productLabel = document.createElement('label');
+    const searchInputId = `entrada-estoque-product-search-${item.row_id}`;
+    const searchResultsId = `entrada-estoque-product-results-${item.row_id}`;
+    productLabel.htmlFor = searchInputId;
+    productLabel.textContent = `Produto ${index + 1} *`;
+    const searchWrap = document.createElement('div');
+    searchWrap.className = 'entrada-estoque-combobox';
+    const searchInput = document.createElement('input');
+    searchInput.id = searchInputId;
+    searchInput.type = 'search';
+    searchInput.autocomplete = 'off';
+    searchInput.placeholder = 'Busque por nome ou código';
+    searchInput.setAttribute('role', 'combobox');
+    searchInput.setAttribute('aria-autocomplete', 'list');
+    searchInput.setAttribute('aria-controls', searchResultsId);
+    searchInput.setAttribute('aria-expanded', 'false');
+    searchInput.disabled = entradaEstoqueDraft.retry_locked || entradaEstoqueSubmitting;
+    const searchResults = document.createElement('div');
+    searchResults.id = searchResultsId;
+    searchResults.className = 'entrada-estoque-search-results';
+    searchResults.setAttribute('role', 'listbox');
+    const searchHint = document.createElement('p');
+    searchHint.className = 'entrada-estoque-search-hint';
+    searchHint.textContent = 'Busque por nome, interno, referência, barras, SKU ou códigos 110V/220V e selecione um resultado.';
+    const searchState = getEntradaEstoqueSearchState(item.row_id);
+    if (selectedProduct?.ativo === true && !searchState.query) {
+      searchInput.value = entradaEstoqueProductLabel(selectedProduct);
+    } else {
+      searchInput.value = searchState.query;
     }
-    productSelect.value = String(item.produto_id || '');
-    productSelect.addEventListener('change', () => {
+
+    const renderSearchResults = () => {
+      const query = String(searchState.query || '');
+      const matches = EntradaEstoqueCore.searchActiveProducts(activeProducts, query, ENTRADA_ESTOQUE_SEARCH_RESULT_LIMIT);
+      const visible = searchState.open && Boolean(EntradaEstoqueCore.normalizeProductSearchText(query));
+      searchResults.replaceChildren();
+      searchResults.hidden = !visible;
+      searchInput.setAttribute('aria-expanded', String(visible));
+      searchInput.removeAttribute('aria-activedescendant');
+      if (!visible) return;
+      if (!matches.length) {
+        const empty = document.createElement('p');
+        empty.className = 'entrada-estoque-search-empty';
+        empty.textContent = 'Nenhum produto ativo encontrado. Ajuste a busca e selecione um resultado existente.';
+        searchResults.appendChild(empty);
+        return;
+      }
+      if (searchState.activeIndex >= matches.length) searchState.activeIndex = matches.length - 1;
+      matches.forEach((product, resultIndex) => {
+        const option = document.createElement('div');
+        const optionId = `entrada-estoque-product-option-${item.row_id}-${product.id}`;
+        option.id = optionId;
+        option.className = 'entrada-estoque-search-option';
+        option.setAttribute('role', 'option');
+        option.setAttribute('aria-selected', String(resultIndex === searchState.activeIndex));
+        if (resultIndex === searchState.activeIndex) {
+          option.classList.add('is-active');
+          searchInput.setAttribute('aria-activedescendant', optionId);
+        }
+        const name = document.createElement('strong');
+        name.textContent = product.nome || `Produto ${product.id}`;
+        const codes = entradaEstoqueProductCodeLabels(product);
+        option.appendChild(name);
+        if (codes.length) {
+          const metadata = document.createElement('span');
+          metadata.textContent = codes.join(' · ');
+          option.appendChild(metadata);
+        }
+        option.addEventListener('pointerdown', event => event.preventDefault());
+        option.addEventListener('click', () => selectProduct(product));
+        searchResults.appendChild(option);
+      });
+    };
+
+    const selectProduct = (product) => {
+      if (!product || product.ativo !== true || entradaEstoqueDraft.retry_locked || entradaEstoqueSubmitting) return;
       const previousProductId = item.produto_id;
       const previousVoltage = item.voltagem;
-      item.produto_id = productSelect.value;
-      item.voltagem = null;
+      const sameProduct = String(previousProductId) === String(product.id);
+      item.produto_id = String(product.id);
+      item.voltagem = sameProduct ? previousVoltage : null;
       if (entradaEstoqueHasDuplicate()) {
         item.produto_id = previousProductId;
         item.voltagem = previousVoltage;
         setEntradaEstoqueFeedback('O mesmo produto e variante não pode aparecer duas vezes.', 'warning');
       } else {
+        entradaEstoqueSearchStates.delete(item.row_id);
         resetEntradaEstoqueConfirmation();
         setEntradaEstoqueFeedback('');
         saveEntradaEstoqueDraft();
       }
       renderEntradaEstoqueItems();
       updateEntradaEstoqueControls();
+      if (!entradaEstoqueHasDuplicate()) {
+        requestAnimationFrame(() => {
+          const voltage = document.querySelector(`[data-entrada-voltage-row="${item.row_id}"]`);
+          (voltage || document.getElementById(`entrada-estoque-product-search-${item.row_id}`))?.focus();
+        });
+      }
+    };
+
+    searchInput.addEventListener('focus', () => {
+      if (searchInput.disabled) return;
+      if (selectedProduct?.ativo === true && !searchState.query) searchInput.select();
+      searchState.open = Boolean(EntradaEstoqueCore.normalizeProductSearchText(searchState.query));
+      renderSearchResults();
     });
-    row.appendChild(createEntradaEstoqueField(`Produto ${index + 1} *`, productSelect, 'entrada-estoque-item-product'));
+    searchInput.addEventListener('input', () => {
+      if (searchInput.disabled) return;
+      const query = searchInput.value;
+      searchState.query = query;
+      searchState.open = true;
+      searchState.activeIndex = -1;
+      if (item.produto_id) {
+        item.produto_id = '';
+        item.voltagem = null;
+        resetEntradaEstoqueConfirmation();
+        saveEntradaEstoqueDraft();
+        renderEntradaEstoqueItems();
+        focusEntradaEstoqueSearch(item.row_id, query.length);
+        updateEntradaEstoqueControls();
+        return;
+      }
+      renderSearchResults();
+    });
+    searchInput.addEventListener('keydown', event => {
+      const matches = EntradaEstoqueCore.searchActiveProducts(activeProducts, searchState.query, ENTRADA_ESTOQUE_SEARCH_RESULT_LIMIT);
+      if (event.key === 'ArrowDown' && matches.length) {
+        event.preventDefault();
+        searchState.open = true;
+        searchState.activeIndex = Math.min(searchState.activeIndex + 1, matches.length - 1);
+        renderSearchResults();
+      } else if (event.key === 'ArrowUp' && matches.length) {
+        event.preventDefault();
+        searchState.open = true;
+        searchState.activeIndex = searchState.activeIndex <= 0 ? 0 : searchState.activeIndex - 1;
+        renderSearchResults();
+      } else if (event.key === 'Enter' && searchState.open && searchState.activeIndex >= 0 && matches[searchState.activeIndex]) {
+        event.preventDefault();
+        selectProduct(matches[searchState.activeIndex]);
+      } else if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        searchState.open = false;
+        searchState.activeIndex = -1;
+        renderSearchResults();
+      }
+    });
+    searchInput.addEventListener('blur', () => {
+      setTimeout(() => {
+        if (document.activeElement !== searchInput && !searchWrap.contains(document.activeElement)) {
+          searchState.open = false;
+          renderSearchResults();
+        }
+      }, 0);
+    });
+    searchWrap.append(searchInput, searchResults);
+    productField.append(productLabel, searchWrap, searchHint);
+    row.appendChild(productField);
+    renderSearchResults();
 
     if (selectedProduct?.tem_voltagem) {
       const voltageSelect = document.createElement('select');
+      voltageSelect.dataset.entradaVoltageRow = String(item.row_id);
       voltageSelect.disabled = entradaEstoqueDraft.retry_locked || entradaEstoqueSubmitting;
       [['', 'Selecione...'], ['110v', '110V'], ['220v', '220V']].forEach(([value, labelText]) => {
         const option = document.createElement('option');
@@ -841,6 +1047,7 @@ function addEntradaEstoqueItem() {
 function removeEntradaEstoqueItem(rowId) {
   if (!entradaEstoqueDraft || entradaEstoqueDraft.retry_locked || entradaEstoqueSubmitting) return;
   entradaEstoqueDraft.itens = entradaEstoqueDraft.itens.filter(item => item.row_id !== rowId);
+  entradaEstoqueSearchStates.delete(rowId);
   resetEntradaEstoqueConfirmation();
   saveEntradaEstoqueDraft();
   renderEntradaEstoqueItems();

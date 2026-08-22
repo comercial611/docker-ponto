@@ -29,8 +29,8 @@ const core = coreContext.EntradaEstoqueCore;
 const operationKey = '11111111-1111-4111-8111-111111111111';
 const today = '2026-08-21';
 const products = [
-  { id: 1, nome: 'Papel A4', sku: 'SKU-A4', ativo: true, tem_voltagem: false, quantidade: 10, quantidade_110v: 91, quantidade_220v: 92, preco: 12 },
-  { id: 2, nome: 'Prensa', sku: 'SKU-PRENSA', ativo: true, tem_voltagem: true, quantidade: 93, quantidade_110v: 3, quantidade_220v: 4, preco: 900 },
+  { id: 1, nome: 'Papel Ágil', sku: 'SKU-A4', codigo_interno: 'INT-PAPEL', codigo_referencia: 'REF-PAPEL', codigo_barras: 'BAR-PAPEL', ativo: true, tem_voltagem: false, quantidade: 10, quantidade_110v: 91, quantidade_220v: 92, preco: 12 },
+  { id: 2, nome: 'Prensa', sku: 'SKU-PRENSA', codigo_interno_110v: 'INT-110', codigo_barras_220v: 'BAR-220', ativo: true, tem_voltagem: true, quantidade: 93, quantidade_110v: 3, quantidade_220v: 4, preco: 900 },
   { id: 3, nome: 'Caneca', sku: 'SKU-CANECA', ativo: true, tem_voltagem: false, quantidade: 7, quantidade_110v: 94, quantidade_220v: 95, preco: 20 },
   { id: 4, nome: 'Inativo', sku: 'SKU-INATIVO', ativo: false, tem_voltagem: false, quantidade: 0, preco: 1 }
 ];
@@ -131,6 +131,42 @@ test('uma entrada aceita múltiplos SKUs', () => {
   ]), products, today);
   assert.equal(result.ok, true);
   assert.deepEqual(Array.from(result.normalized.itens, item => item.produto_id), [1, 3, 2]);
+});
+
+test('busca local encontra somente produtos ativos por nome, códigos e sem acentos', () => {
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(core.searchActiveProducts(products, 'papel agil'))).map(product => product.id),
+    [1]
+  );
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(core.searchActiveProducts(products, 'ref-papel'))).map(product => product.id),
+    [1]
+  );
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(core.searchActiveProducts(products, 'int-110'))).map(product => product.id),
+    [2]
+  );
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(core.searchActiveProducts(products, 'int-papel'))).map(product => product.id),
+    [1]
+  );
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(core.searchActiveProducts(products, 'sku-a4'))).map(product => product.id),
+    [1]
+  );
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(core.searchActiveProducts(products, 'bar-papel'))).map(product => product.id),
+    [1]
+  );
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(core.searchActiveProducts(products, 'bar-220'))).map(product => product.id),
+    [2]
+  );
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(core.searchActiveProducts(products, 'inativo'))),
+    []
+  );
+  assert.equal(core.normalizeProductSearchText('Referência Ágil'), 'referencia agil');
 });
 
 test('item ou variante duplicada é rejeitado', () => {
@@ -425,8 +461,8 @@ test('novo fluxo usa somente a RPC local e conteúdo dinâmico seguro', () => {
   assert.match(uiSource, /sessionStorage/);
   assert.doesNotMatch(uiSource, /\bproduct\.quantidade(?:_110v|_220v)?\s*=/);
   assert.match(adminHtml, />Registrar entrada</);
-  assert.match(adminHtml, /css\/admin\.css\?v=20260821-entrada-estoque-1/);
-  assert.match(adminHtml, /js\/admin\.js\?v=20260821-entrada-estoque-1/);
+  assert.match(adminHtml, /css\/admin\.css\?v=20260822-entrada-busca-1/);
+  assert.match(adminHtml, /js\/admin\.js\?v=20260822-entrada-busca-1/);
   assert.match(adminHtml, /id="entrada-estoque-confirm"/);
   assert.match(adminHtml, /id="entrada-estoque-feedback" role="alert" aria-live="assertive"/);
 
