@@ -136,10 +136,12 @@ quantidade. Cada vinculo usara seu `unidades_por_venda`, e 110V/220V
 continuarao independentes.
 
 Um ajuste manual ou zeragem exigira motivo, auditoria, chave de idempotencia e
-confirmacao humana. Se o produto acabou somente por vendas ainda pendentes do
-CSV, a disponibilidade externa podera ser zerada em operacao explicita, mas o
-saldo local aguardara a baixa oficial; nao havera uma segunda baixa local
-estimada.
+confirmacao humana. **Regra atual, enquanto a zeragem com cobertura ainda nao
+estiver implementada:** se o produto acabou somente por vendas ainda pendentes
+do CSV, somente a disponibilidade externa podera ser zerada em operacao
+explicita; o saldo local aguardara a baixa oficial e nao havera uma segunda
+baixa local estimada. A regra futura abaixo substituira esse procedimento apenas
+apos migration 36, RPC, interface e rollout aprovados.
 
 A previa generica deve permanecer diagnostica. Um item `aguardando CSV` nao
 pode abrir uma escrita. A escrita futura seguira a cadeia causal:
@@ -157,11 +159,41 @@ O desenho futuro devera manter separados preços, CSV, catalogo, OAuth, LGPD e
 sincronizacao normal. Cada PR de implementação deverá atualizar este README,
 o README raiz e `docs/ARQUITETURA.md`.
 
+### Contrato planejado — zeragem intradiaria e reconciliacao do CSV
+
+Este contrato e **planejado / ainda nao implementado**. O CSV diario devera
+ser unico, completo e oficial para as vendas da competencia. Se uma venda
+remota fizer o item acabar durante o dia, uma futura zeragem auditada podera
+zerar o saldo local e publicar alvo externo zero somente apos confirmacao
+humana. Nenhuma baixa estimada de venda sera criada localmente.
+
+A zeragem por venda devera gerar cobertura pendente com quantidade igual
+exclusivamente ao saldo local inteiro anterior removido pelo servidor. A
+cobertura so podera ser reconciliada pelo CSV da mesma competencia. CSV com
+quantidade exatamente igual a cobertura reconciliara sem uma segunda baixa
+local. CSV menor, maior, ausente, de competencia divergente ou corretivo
+devera bloquear a aplicacao e exigir revisao manual auditada. Entrada de
+mercadoria posterior a zeragem nao podera ser consumida por CSV antigo.
+
+Zeragem por avaria, perda, contagem ou divergencia fisica sera `ajuste_fisico`
+e nao criara cobertura para CSV. Produtos 110V e 220V serao itens separados;
+enquanto o CSV nao trouxer voltagem, venda aguardando CSV nesses itens nao
+podera ser reconciliada automaticamente.
+
+A futura escrita externa ficara fora da previa generica e seguira:
+`causa -> outbox por loja -> confirmacao humana -> janela temporaria ->
+releitura -> confirmacao`. O estoque fisico continuara compartilhado pelas
+lojas `3514029` e `6696910`, sem dividir quantidades entre elas.
+
+A proxima implementacao prevista sera a migration 36; a migration 35 continua
+reservada para LGPD. Toda PR futura desta arquitetura devera atualizar este
+arquivo, o README raiz e `docs/ARQUITETURA.md`.
+
 ### Roadmap planejado
 
 1. Documentação e invariantes. **Concluido.**
 2. Ledger e interface de entrada local. **Concluido na migration 34.**
-3. Ajuste e zeragem.
+3. Ajuste, zeragem e reconciliacao (migration 36).
 4. Pausa por loja.
 5. Outbox e autorizações.
 6. Prévia intradiária.

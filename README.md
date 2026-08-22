@@ -110,9 +110,12 @@ em preco, catalogo, OAuth, LGPD, vinculos ou nos campos de ultima baixa.
   podera refletir a mesma entrada fisica em cada loja; `unidades_por_venda` e
   as voltagens 110V/220V deverao ser tratados por item e por loja.
 - Ajuste manual e zeragem exigirao motivo, auditoria, idempotencia e
-  confirmacao humana. Uma zeragem causada apenas por vendas ainda pendentes do
-  CSV podera zerar a disponibilidade externa, mas o estoque local aguardara o
-  fechamento oficial; nenhuma segunda baixa local sera estimada.
+  confirmacao humana. **Regra atual, enquanto a zeragem com cobertura ainda nao
+  estiver implementada:** uma zeragem causada apenas por vendas ainda pendentes
+  do CSV pode zerar somente a disponibilidade externa; o estoque local aguarda
+  o fechamento oficial e nenhuma segunda baixa local e estimada. A regra futura
+  descrita abaixo substituira esse procedimento somente apos migration 36, RPC,
+  interface e rollout aprovados.
 - A previa generica continuara diagnostica. Uma diferenca classificada como
   `aguardando CSV` nao podera autorizar escrita.
 - Publicacoes futuras seguirao: operacao causal -> outbox por
@@ -122,11 +125,41 @@ em preco, catalogo, OAuth, LGPD, vinculos ou nos campos de ultima baixa.
   auditada com motivo, usuario e data. Pausar uma loja nao afetara a outra.
 - Precos, CSV, catalogo, OAuth e LGPD permanecem separados desse fluxo.
 
+### Contrato planejado — zeragem intradiaria e reconciliacao do CSV
+
+O contrato abaixo e **planejado / ainda nao implementado**. O CSV diario devera
+ser unico, completo e oficial para as vendas da competencia. Se um item acabar
+durante o dia por venda remota, uma futura zeragem auditada podera levar o
+saldo local a zero e, depois de confirmacao humana, publicar alvo externo zero;
+isso nao criara baixa local estimada.
+
+Essa zeragem por venda devera criar cobertura pendente calculada exclusivamente
+pelo saldo local inteiro anterior removido pelo servidor. Somente o CSV da
+mesma competencia podera reconciliar a cobertura. Correspondencia exata
+reconciliara sem uma segunda baixa local. CSV menor, maior, ausente, de
+competencia divergente ou corretivo devera bloquear a aplicacao e exigir
+revisao manual auditada. Uma entrada posterior a zeragem nao podera ser
+consumida por um CSV antigo.
+
+Zeragem por avaria, perda, contagem ou divergencia fisica sera classificada
+como `ajuste_fisico` e nao criara cobertura para o CSV. Produtos 110V e 220V
+serao tratados separadamente; enquanto o CSV nao trouxer voltagem, uma venda
+aguardando CSV nesses itens nao podera ser reconciliada automaticamente.
+
+Qualquer escrita externa futura seguira a cadeia causal: causa -> outbox por
+loja -> confirmacao humana -> janela temporaria -> releitura -> confirmacao.
+As lojas `3514029` e `6696910` continuarao compartilhando o estoque fisico;
+quantidades nao serao divididas entre elas.
+
+A proxima implementacao prevista sera a migration 36. A migration 35 continua
+reservada para LGPD. Toda PR futura desta arquitetura devera atualizar este
+README, `supabase/README.md` e `docs/ARQUITETURA.md`.
+
 ### Roadmap planejado
 
 1. Documentar invariantes. **Concluido nesta etapa.**
 2. Criar ledger e interface de entrada local. **Concluido na migration 34.**
-3. Criar ajuste e zeragem auditados.
+3. Criar ajuste, zeragem e reconciliacao auditados (migration 36).
 4. Criar pausa individual por loja.
 5. Criar outbox e autorizacoes temporarias.
 6. Criar previa intradiaria causal.
