@@ -111,11 +111,12 @@ em preco, catalogo, OAuth, LGPD, vinculos ou nos campos de ultima baixa.
   as voltagens 110V/220V deverao ser tratados por item e por loja.
 - Ajuste manual e zeragem exigirao motivo, auditoria, idempotencia e
   confirmacao humana. **Regra atual, enquanto a zeragem com cobertura ainda nao
-  estiver implementada:** uma zeragem causada apenas por vendas ainda pendentes
-  do CSV pode zerar somente a disponibilidade externa; o estoque local aguarda
-  o fechamento oficial e nenhuma segunda baixa local e estimada. A regra futura
-  descrita abaixo substituira esse procedimento somente apos migration 36, RPC,
-  interface e rollout aprovados.
+  estiver implementada:** o administrador zera manualmente o saldo local e o
+  externo; antes do CSV oficial seguinte, recompõe temporariamente no saldo
+  local a quantidade do arquivo para que a baixa oficial termine novamente em
+  zero. A migration 36 ainda nao automatiza nem audita essa compensacao. A regra
+  futura de cobertura substituira esse procedimento somente apos RPC, interface
+  e rollout especificos aprovados.
 - A previa generica continuara diagnostica. Uma diferenca classificada como
   `aguardando CSV` nao podera autorizar escrita.
 - Publicacoes futuras seguirao: operacao causal -> outbox por
@@ -127,8 +128,27 @@ em preco, catalogo, OAuth, LGPD, vinculos ou nos campos de ultima baixa.
 
 ### Contrato planejado — zeragem intradiaria e reconciliacao do CSV
 
-O contrato abaixo e **planejado / ainda nao implementado**. O CSV diario devera
-ser unico, completo e oficial para as vendas da competencia. Se um item acabar
+O contrato de zeragem abaixo continua **planejado / ainda nao implementado**.
+A migration 36 desta etapa implementa apenas a fundacao segura do fechamento.
+A aplicacao oficial deixa de confiar no hash, no produto resolvido ou no resumo
+do navegador: a Edge Function autenticada `fechamento-csv-produtos` recebe o
+arquivo bruto, valida o administrador, normaliza e interpreta todas as linhas,
+calcula o SHA-256 e chama a RPC transacional com `service_role`. A RPC revalida
+o UUID administrativo e deriva o e-mail de auditoria do banco. Apenas
+`service_role` pode executar essa RPC; a RPC inferior de baixa tambem deixa de
+aceitar chamadas diretas.
+
+A previa montada no Admin continua local e serve somente como diagnostico. No
+momento de aplicar, o arquivo bruto e a competencia seguem para a Function e o
+resultado estruturado do servidor e validado antes de a tela indicar sucesso.
+Ambiguidade entre produto e maquina, arquivo truncado ou corretivo, produto com
+voltagem, competencia divergente e saldo insuficiente bloqueiam a transacao
+inteira.
+
+A migration tambem cria tabelas imutaveis para coberturas e seus eventos, sem
+conceder escrita e sem criar RPC ou interface de zeragem. Portanto, nenhuma
+cobertura pode ser aberta por esta etapa. O CSV diario deve ser unico, completo
+e oficial para as vendas da competencia. Se um item acabar
 durante o dia por venda remota, uma futura zeragem auditada podera levar o
 saldo local a zero e, depois de confirmacao humana, publicar alvo externo zero;
 isso nao criara baixa local estimada.
@@ -151,23 +171,25 @@ loja -> confirmacao humana -> janela temporaria -> releitura -> confirmacao.
 As lojas `3514029` e `6696910` continuarao compartilhando o estoque fisico;
 quantidades nao serao divididas entre elas.
 
-A proxima implementacao prevista sera a migration 36. A migration 35 continua
-reservada para LGPD. Toda PR futura desta arquitetura devera atualizar este
-README, `supabase/README.md` e `docs/ARQUITETURA.md`.
+A migration 35 continua reservada para LGPD. A migration 36 estabelece a base
+de reconciliacao, mas ajuste, zeragem, criacao de cobertura e escrita externa
+continuam fora do escopo. Toda PR futura desta arquitetura devera atualizar
+este README, `supabase/README.md` e `docs/ARQUITETURA.md`.
 
 ### Roadmap planejado
 
 1. Documentar invariantes. **Concluido nesta etapa.**
 2. Criar ledger e interface de entrada local. **Concluido na migration 34.**
-3. Criar ajuste, zeragem e reconciliacao auditados (migration 36).
-4. Criar pausa individual por loja.
-5. Criar outbox e autorizacoes temporarias.
-6. Criar previa intradiaria causal.
-7. Testar piloto em uma loja.
-8. Adicionar segunda loja, falhas e retry.
-9. Criar reconciliação pós-CSV.
+3. Criar a base transacional de reconciliacao CSV. **Implementada na migration 36.**
+4. Criar ajuste, zeragem e abertura auditada de cobertura.
+5. Criar pausa individual por loja.
+6. Criar outbox e autorizacoes temporarias.
+7. Criar previa intradiaria causal.
+8. Testar piloto em uma loja.
+9. Adicionar segunda loja, falhas e retry.
+10. Validar reconciliacao pos-CSV com coberturas reais.
 
 Cada PR futura deverá atualizar este arquivo, `supabase/README.md` e
-`docs/ARQUITETURA.md`. Alem da entrada local da migration 34, publicacao
-intradiaria na Nuvemshop, outbox, pausas, janelas, ajuste, zeragem e
-reconciliacao pos-CSV continuam planejados e nao implementados.
+`docs/ARQUITETURA.md`. Alem da entrada local da migration 34 e da fundacao CSV
+da migration 36 e da Function de fechamento oficial, publicacao intradiaria na Nuvemshop, outbox, pausas, janelas,
+ajuste e zeragem continuam planejados e nao implementados.

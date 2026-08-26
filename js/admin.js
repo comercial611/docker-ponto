@@ -1,3 +1,124 @@
+// BEGIN CSV_RECONCILIATION_CORE
+const CsvReconciliationCore = (() => {
+  function normalizeContent(value) {
+    return String(value || '')
+      .replace(/^\uFEFF/, '')
+      .replace(/\r\n?/g, '\n')
+      .replace(/\n+$/g, '');
+  }
+
+  function parseContent(value) {
+    const text = normalizeContent(value);
+    const rows = [];
+    let row = [];
+    let current = '';
+    let inQuotes = false;
+    let closedQuotedField = false;
+
+    for (let index = 0; index < text.length; index++) {
+      const character = text[index];
+      const next = text[index + 1];
+      if (inQuotes) {
+        if (character === '"' && next === '"') {
+          current += '"';
+          index++;
+        } else if (character === '"') {
+          inQuotes = false;
+          closedQuotedField = true;
+        } else {
+          current += character;
+        }
+        continue;
+      }
+      if (closedQuotedField) {
+        if (character === ',') {
+          row.push(current.trim());
+          current = '';
+          closedQuotedField = false;
+          continue;
+        }
+        if (character === '\n') {
+          row.push(current.trim());
+          if (row.some(cell => cell !== '')) rows.push(row);
+          row = [];
+          current = '';
+          closedQuotedField = false;
+          continue;
+        }
+        throw new Error('Caractere invalido apos campo entre aspas.');
+      }
+      if (character === '"') {
+        if (current.length !== 0) throw new Error('Aspas fora do inicio de um campo.');
+        inQuotes = true;
+        continue;
+      }
+      if (character === ',') {
+        row.push(current.trim());
+        current = '';
+        continue;
+      }
+      if (character === '\n') {
+        row.push(current.trim());
+        if (row.some(cell => cell !== '')) rows.push(row);
+        row = [];
+        current = '';
+        continue;
+      }
+      current += character;
+    }
+    if (inQuotes) throw new Error('Aspas nao finalizadas no arquivo CSV.');
+    row.push(current.trim());
+    if (row.some(cell => cell !== '')) rows.push(row);
+    return rows;
+  }
+
+  function resolveCandidates(productMatches, machineMatches) {
+    const productCandidates = Array.isArray(productMatches) ? productMatches : [];
+    const machineCandidates = Array.isArray(machineMatches) ? machineMatches : [];
+    const activeProducts = productCandidates.filter(match => match?.product?.ativo === true);
+    if (productCandidates.length && machineCandidates.length) return { status: 'ambiguous' };
+    if (productCandidates.length && activeProducts.length === 0) return { status: 'inactive' };
+    if (activeProducts.length > 1) return { status: 'ambiguous' };
+    if (activeProducts.length === 1) return { status: 'product', match: activeProducts[0] };
+    if (machineCandidates.length) return { status: 'machine', match: machineCandidates[0] };
+    return { status: 'missing' };
+  }
+
+  function bytesToBase64(bytes) {
+    if (!(bytes instanceof Uint8Array) || bytes.length < 1) return '';
+    let binary = '';
+    const chunkSize = 0x8000;
+    for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+      binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+    }
+    return btoa(binary);
+  }
+
+  function validOfficialResult(data) {
+    if (!data || typeof data !== 'object' || Array.isArray(data)
+        || data.aplicado !== true || typeof data.repetida !== 'boolean'
+        || !Number.isSafeInteger(data.lote_id) || data.lote_id < 1
+        || !Number.isSafeInteger(data.total_itens) || data.total_itens < 1
+        || !Number.isSafeInteger(data.total_baixado) || data.total_baixado < 0
+        || !Array.isArray(data.itens) || data.itens.length !== data.total_itens) return false;
+    const rowsAreValid = data.itens.every(item => item && typeof item === 'object' && !Array.isArray(item)
+      && item.lote_id === data.lote_id
+      && item.repetida === data.repetida
+      && Number.isSafeInteger(item.produto_id) && item.produto_id > 0
+      && typeof item.produto_nome === 'string' && item.produto_nome.trim()
+      && Number.isInteger(item.quantidade_anterior) && item.quantidade_anterior >= 0
+      && Number.isInteger(item.quantidade_nova) && item.quantidade_nova >= 0
+      && Number.isInteger(item.quantidade_baixada) && item.quantidade_baixada >= 0);
+    return rowsAreValid && data.itens.reduce(
+      (total, item) => total + item.quantidade_baixada,
+      0
+    ) === data.total_baixado;
+  }
+
+  return { normalizeContent, parseContent, resolveCandidates, bytesToBase64, validOfficialResult };
+})();
+// END CSV_RECONCILIATION_CORE
+
 // BEGIN ENTRADA_ESTOQUE_CORE
 const EntradaEstoqueCore = (() => {
   const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -319,9 +440,11 @@ let vendedores = [];
 let deleteTargetId = null;
 let deleteVendedorId = null;
 let csvPreviewRows = [];
+let csvPreviewSourceItems = [];
 let csvPreviewApplied = false;
 let csvPreviewFileName = null;
 let csvPreviewHash = null;
+let csvPreviewRawBase64 = null;
 let csvDuplicateLot = null;
 let csvDuplicateCheckPending = false;
 let csvLots = [];
@@ -4141,56 +4264,14 @@ function movementDateFromFileName(fileName) {
 }
 
 async function hashCsvContent(text) {
-  const normalized = String(text || '')
-    .replace(/^\uFEFF/, '')
-    .replace(/\r\n?/g, '\n')
-    .trim();
+  const normalized = CsvReconciliationCore.normalizeContent(text);
   const bytes = new TextEncoder().encode(normalized);
   const digest = await crypto.subtle.digest('SHA-256', bytes);
   return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
 }
 
 function parseCsvText(text) {
-  const rows = [];
-  let row = [];
-  let current = '';
-  let inQuotes = false;
-
-  for (let i = 0; i < text.length; i++) {
-    const char = text[i];
-    const next = text[i + 1];
-
-    if (char === '"') {
-      if (inQuotes && next === '"') {
-        current += '"';
-        i++;
-      } else {
-        inQuotes = !inQuotes;
-      }
-      continue;
-    }
-
-    if (char === ',' && !inQuotes) {
-      row.push(current.trim());
-      current = '';
-      continue;
-    }
-
-    if ((char === '\n' || char === '\r') && !inQuotes) {
-      if (char === '\r' && next === '\n') i++;
-      row.push(current.trim());
-      if (row.some(cell => cell !== '')) rows.push(row);
-      row = [];
-      current = '';
-      continue;
-    }
-
-    current += char;
-  }
-
-  row.push(current.trim());
-  if (row.some(cell => cell !== '')) rows.push(row);
-  return rows;
+  return CsvReconciliationCore.parseContent(text);
 }
 
 function parseBrazilianQty(value) {
@@ -4226,7 +4307,7 @@ function csvRowsToItems(rows) {
     const barcode = row[barcodeIndex] || '';
     const rawQty = readCsvQty(row, qtyIndex);
     return { ref, descricao, barcode, quantidade: parseBrazilianQty(rawQty), rawQty };
-  }).filter(item => item.ref || item.descricao || item.barcode || item.quantidade);
+  });
 }
 
 function summarizeCsvItems(items) {
@@ -4269,18 +4350,40 @@ function productMatchesCsvItem(product, item) {
 function findProductForCsvItem(item) {
   const productItems = products.filter(p => (p.categoria || 'maquina') === 'produto');
   const machineItems = products.filter(p => (p.categoria || 'maquina') !== 'produto');
+  const productMatches = productItems
+    .map(product => ({ product, matchBy: productMatchesCsvItem(product, item) }))
+    .filter(match => match.matchBy);
+  const machineMatches = machineItems
+    .map(product => ({ product, matchBy: productMatchesCsvItem(product, item) }))
+    .filter(match => match.matchBy);
+  const resolution = CsvReconciliationCore.resolveCandidates(productMatches, machineMatches);
 
-  for (const product of productItems) {
-    const matchBy = productMatchesCsvItem(product, item);
-    if (matchBy) return { product, matchBy, ignoredMachine: null };
+  if (resolution.status === 'product') {
+    return {
+      product: resolution.match.product,
+      matchBy: resolution.match.matchBy,
+      ignoredMachine: null,
+      blockingReason: null
+    };
   }
-
-  for (const machine of machineItems) {
-    const matchBy = productMatchesCsvItem(machine, item);
-    if (matchBy) return { product: null, matchBy, ignoredMachine: machine };
+  if (resolution.status === 'machine') {
+    return {
+      product: null,
+      matchBy: resolution.match.matchBy,
+      ignoredMachine: resolution.match.product,
+      blockingReason: null
+    };
   }
-
-  return { product: null, matchBy: null, ignoredMachine: null };
+  return {
+    product: null,
+    matchBy: null,
+    ignoredMachine: null,
+    blockingReason: resolution.status === 'ambiguous'
+      ? 'Codigo ambiguo'
+      : resolution.status === 'inactive'
+        ? 'Produto inativo'
+        : null
+  };
 }
 
 function csvApplicableRows() {
@@ -4296,6 +4399,7 @@ function updateCsvApplyState() {
   const applicable = csvApplicableRows();
   const invalid = csvPreviewRows.filter(row => row.product && row.item.quantidade <= 0).length;
   const insufficient = csvPreviewRows.filter(row => row.product && row.afterQty < 0).length;
+  const blocked = csvPreviewRows.some(row => row.blocking);
   const movementDate = document.getElementById('csv-movement-date')?.value || '';
 
   if (csvPreviewApplied) {
@@ -4307,7 +4411,7 @@ function updateCsvApplyState() {
   }
 
   btn.textContent = applicable.length ? `Aplicar baixa (${applicable.length})` : 'Aplicar baixa';
-  btn.disabled = !applicable.length || invalid > 0 || insufficient > 0 || !movementDate || !csvPreviewHash || csvDuplicateCheckPending || !!csvDuplicateLot;
+  btn.disabled = !applicable.length || invalid > 0 || insufficient > 0 || blocked || !movementDate || !csvPreviewHash || !csvPreviewRawBase64 || csvDuplicateCheckPending || !!csvDuplicateLot;
 
   if (!movementDate) {
     msg.classList.add('err');
@@ -4319,6 +4423,9 @@ function updateCsvApplyState() {
     msg.textContent = 'Este arquivo CSV ja foi aplicado anteriormente. Selecione outro arquivo.';
   } else if (!csvPreviewRows.length) {
     msg.textContent = '';
+  } else if (blocked) {
+    msg.classList.add('err');
+    msg.textContent = 'Revise os codigos ambiguos ou produtos inativos antes de aplicar.';
   } else if (invalid > 0) {
     msg.classList.add('err');
     msg.textContent = 'Existe produto encontrado com quantidade invalida.';
@@ -4400,9 +4507,11 @@ function handleCsvMovementDateChange() {
 
 function clearCsvPreview() {
   csvPreviewRows = [];
+  csvPreviewSourceItems = [];
   csvPreviewApplied = false;
   csvPreviewFileName = null;
   csvPreviewHash = null;
+  csvPreviewRawBase64 = null;
   csvDuplicateLot = null;
   csvDuplicateCheckPending = false;
   const input = document.getElementById('csv-baixa-input');
@@ -4426,9 +4535,11 @@ async function handleCsvPreview(event) {
   const tbody = document.getElementById('csv-preview-tbody');
 
   csvPreviewRows = [];
+  csvPreviewSourceItems = [];
   csvPreviewApplied = false;
   csvPreviewFileName = file.name;
   csvPreviewHash = null;
+  csvPreviewRawBase64 = null;
   csvDuplicateLot = null;
   csvDuplicateCheckPending = false;
   renderCsvDuplicateWarning();
@@ -4440,25 +4551,52 @@ async function handleCsvPreview(event) {
   wrapEl.style.display = 'none';
   tbody.innerHTML = '';
 
-  const text = await file.text();
-  try {
-    csvPreviewHash = await hashCsvContent(text);
-  } catch (error) {
-    summaryEl.textContent = 'Nao foi possivel identificar o arquivo com seguranca.';
+  if (file.size < 1 || file.size > 1024 * 1024) {
+    summaryEl.textContent = 'O arquivo CSV deve ter entre 1 byte e 1 MB.';
     updateCsvApplyState();
     return;
   }
-  const rows = parseCsvText(text);
-  const items = summarizeCsvItems(csvRowsToItems(rows));
+
+  let fileBytes;
+  let text;
+  try {
+    fileBytes = new Uint8Array(await file.arrayBuffer());
+    csvPreviewRawBase64 = CsvReconciliationCore.bytesToBase64(fileBytes);
+    text = new TextDecoder('utf-8', { fatal: true }).decode(fileBytes);
+    csvPreviewHash = await hashCsvContent(text);
+  } catch (error) {
+    csvPreviewRawBase64 = null;
+    summaryEl.textContent = 'O arquivo CSV deve usar codificacao UTF-8 valida.';
+    updateCsvApplyState();
+    return;
+  }
+  let rows;
+  try {
+    rows = parseCsvText(text);
+    csvPreviewSourceItems = csvRowsToItems(rows);
+    if (!csvPreviewSourceItems.length) throw new Error('Nenhuma linha de produto foi encontrada.');
+  } catch (error) {
+    csvPreviewRows = [];
+    csvPreviewSourceItems = [];
+    csvPreviewHash = null;
+    csvPreviewRawBase64 = null;
+    summaryEl.textContent = `Nao foi possivel interpretar o CSV: ${error?.message || 'formato invalido.'}`;
+    updateCsvApplyState();
+    return;
+  }
+  const items = summarizeCsvItems(csvPreviewSourceItems);
 
   const previewRows = items.map(item => {
-    const { product, matchBy, ignoredMachine } = findProductForCsvItem(item);
+    const { product, matchBy, ignoredMachine, blockingReason } = findProductForCsvItem(item);
     const currentQty = product ? totalQty(product) : null;
     const afterQty = product ? currentQty - item.quantidade : null;
     let status = 'ok';
     let label = 'Encontrado';
 
-    if (ignoredMachine) {
+    if (blockingReason) {
+      status = 'err';
+      label = blockingReason;
+    } else if (ignoredMachine) {
       status = 'muted';
       label = 'Maquina ignorada';
     } else if (!product) {
@@ -4472,13 +4610,24 @@ async function handleCsvPreview(event) {
       label = 'Estoque insuf.';
     }
 
-    return { item, product, ignoredMachine, matchBy, currentQty, afterQty, status, label };
+    return {
+      item,
+      product,
+      ignoredMachine,
+      matchBy,
+      currentQty,
+      afterQty,
+      status,
+      label,
+      blocking: Boolean(blockingReason)
+    };
   });
   csvPreviewRows = previewRows;
 
   const found = previewRows.filter(row => row.product).length;
   const ignoredMachines = previewRows.filter(row => row.ignoredMachine).length;
-  const notFound = previewRows.filter(row => !row.product && !row.ignoredMachine).length;
+  const blockedRows = previewRows.filter(row => row.blocking).length;
+  const notFound = previewRows.filter(row => !row.product && !row.ignoredMachine && !row.blocking).length;
   const insufficient = previewRows.filter(row => row.product && row.afterQty < 0).length;
   const totalQtyCsv = previewRows.reduce((sum, row) => sum + row.item.quantidade, 0);
 
@@ -4487,6 +4636,7 @@ async function handleCsvPreview(event) {
     ${found} produto${found === 1 ? '' : 's'} encontrado${found === 1 ? '' : 's'} -
     ${ignoredMachines} maquina${ignoredMachines === 1 ? '' : 's'} ignorada${ignoredMachines === 1 ? '' : 's'} -
     ${notFound} nao encontrado${notFound === 1 ? '' : 's'} -
+    ${blockedRows} codigo${blockedRows === 1 ? '' : 's'} bloqueado${blockedRows === 1 ? '' : 's'} -
     ${insufficient} com estoque insuficiente -
     total CSV: ${totalQtyCsv}
   `;
@@ -4527,9 +4677,10 @@ async function confirmCsvBaixa() {
   const applicable = csvApplicableRows();
   const invalid = csvPreviewRows.filter(row => row.product && row.item.quantidade <= 0).length;
   const insufficient = csvPreviewRows.filter(row => row.product && row.afterQty < 0).length;
+  const blocked = csvPreviewRows.some(row => row.blocking);
   const movementDate = document.getElementById('csv-movement-date')?.value || '';
 
-  if (!applicable.length || invalid > 0 || insufficient > 0 || csvPreviewApplied || !movementDate || !csvPreviewHash || csvDuplicateCheckPending || csvDuplicateLot) {
+  if (!applicable.length || invalid > 0 || insufficient > 0 || blocked || csvPreviewApplied || !movementDate || !csvPreviewHash || !csvPreviewRawBase64 || csvDuplicateCheckPending || csvDuplicateLot) {
     updateCsvApplyState();
     return;
   }
@@ -4543,47 +4694,49 @@ async function confirmCsvBaixa() {
   msg.className = 'csv-apply-message';
   msg.textContent = '';
 
-  const itens = applicable.map(row => ({
-    produto_id: row.product.id,
-    quantidade: row.item.quantidade,
-    referencia: row.item.ref || null,
-    codigo_barras: row.item.barcode || null,
-    descricao: row.item.descricao || null,
-    match_by: row.matchBy || null
-  }));
-
-  const resumo = {
-    total_linhas: csvPreviewRows.length,
-    produtos_encontrados: csvPreviewRows.filter(row => row.product).length,
-    maquinas_ignoradas: csvPreviewRows.filter(row => row.ignoredMachine).length,
-    nao_encontrados: csvPreviewRows.filter(row => !row.product && !row.ignoredMachine).length,
-    estoque_insuficiente: csvPreviewRows.filter(row => row.product && row.afterQty < 0).length,
-    total_csv: csvPreviewRows.reduce((sum, row) => sum + row.item.quantidade, 0)
-  };
-
-  const { data, error } = await sb.rpc('registrar_fechamento_csv_produtos', {
-    p_itens: itens,
-    p_arquivo_nome: csvPreviewFileName,
-    p_resumo: resumo,
-    p_arquivo_hash: csvPreviewHash,
-    p_data_movimento: movementDate
-  });
+  let data;
+  let error;
+  try {
+    ({ data, error } = await sb.functions.invoke('fechamento-csv-produtos', {
+      body: {
+        arquivo_base64: csvPreviewRawBase64,
+        arquivo_nome: csvPreviewFileName,
+        competencia: movementDate
+      }
+    }));
+  } catch (unexpectedError) {
+    error = unexpectedError;
+  }
 
   if (error) {
+    const failure = await readNuvemshopFunctionFailure(
+      error,
+      'Nao foi possivel aplicar a baixa por CSV.'
+    );
     btn.disabled = false;
     updateCsvApplyState();
     msg.className = 'csv-apply-message err';
-    msg.textContent = error.message || 'Nao foi possivel aplicar a baixa por CSV.';
+    msg.textContent = failure.message;
+    return;
+  }
+
+  if (!CsvReconciliationCore.validOfficialResult(data)) {
+    btn.disabled = false;
+    updateCsvApplyState();
+    msg.className = 'csv-apply-message err';
+    msg.textContent = 'O servidor retornou um resultado inesperado. Confira o historico antes de tentar novamente.';
     return;
   }
 
   csvPreviewApplied = true;
-  msg.className = 'csv-apply-message ok';
-  msg.textContent = `${data?.length || applicable.length} baixa${(data?.length || applicable.length) === 1 ? '' : 's'} aplicada${(data?.length || applicable.length) === 1 ? '' : 's'} com sucesso.`;
   await loadProducts();
   await loadHistory();
   await loadCsvLots();
   updateCsvApplyState();
+  msg.className = 'csv-apply-message ok';
+  msg.textContent = data.repetida
+    ? 'Este fechamento oficial ja havia sido aplicado. Os dados foram recarregados sem nova baixa.'
+    : `${data.total_itens} baixa${data.total_itens === 1 ? '' : 's'} aplicada${data.total_itens === 1 ? '' : 's'} com sucesso.`;
 }
 
 // ─── VENDEDORES ──────────────────────────────────────────
