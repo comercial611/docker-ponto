@@ -322,7 +322,10 @@ test('cobertura de outra competência bloqueia mesmo se o produto estiver ausent
 test('migration 36 mantém uma transação, uma fronteira server-side e rollback por exceção', () => {
   assert.equal((migrationSource.match(/^begin;$/gim) || []).length, 1);
   assert.equal((migrationSource.match(/^commit;$/gim) || []).length, 1);
-  assert.match(migrationSource, /create unique index baixas_csv_lotes_competencia_uidx/i);
+  assert.match(
+    migrationSource,
+    /create unique index baixas_csv_lotes_competencia_uidx[\s\S]*where validacao_versao >= 2[\s\S]*data_movimento is not null/i
+  );
   assert.match(migrationSource, /pg_advisory_xact_lock[\s\S]*csv-competencia:[\s\S]*pg_advisory_xact_lock[\s\S]*csv-arquivo:/i);
   assert.match(migrationSource, /v_lote\.payload_normalizado is distinct from v_payload/i);
   assert.match(migrationSource, /corretivos exigem revisao manual auditada/i);
@@ -338,6 +341,29 @@ test('migration 36 mantém uma transação, uma fronteira server-side e rollback
   const firstMutation = migrationSource.indexOf('insert into public.baixas_csv_lotes');
   assert.ok(firstMutation > migrationSource.indexOf('Existe produto com estoque insuficiente'));
   assert.ok(firstMutation > migrationSource.indexOf('O CSV oficial nao contem todos os produtos'));
+});
+
+test('migration 36 preserva legado v1 e grava somente fechamentos oficiais como v2', () => {
+  assert.match(
+    migrationSource,
+    /add column validacao_versao smallint not null default 1/i
+  );
+  assert.match(
+    migrationSource,
+    /validacao_versao,\s*payload_normalizado[\s\S]*\) values \([\s\S]*,\s*2,\s*v_payload/i
+  );
+  assert.doesNotMatch(
+    migrationSource,
+    /create unique index baixas_csv_lotes_competencia_uidx[\s\S]*where data_movimento is not null\s*;/i
+  );
+  assert.match(
+    migrationSource,
+    /where l\.validacao_versao >= 2\s+and l\.data_movimento = p_data_movimento/i
+  );
+  assert.match(
+    migrationSource,
+    /v_lote\.validacao_versao <> 2[\s\S]*or v_lote\.data_movimento is distinct from p_data_movimento/i
+  );
 });
 
 test('trigger de cobertura usa alvos escalares compatíveis no SELECT INTO', () => {
@@ -362,6 +388,12 @@ test('RPC inferior não pode ser chamada pelo navegador', () => {
   assert.doesNotMatch(migrationSource, /grant execute on function public\.registrar_fechamento_csv_produtos[\s\S]{0,150}to authenticated/i);
   assert.match(functionSource, /p_usuario_id:\s*authenticatedUser\.id/);
   assert.doesNotMatch(functionSource, /p_(usuario_email|perfil|tipo_usuario)/i);
+});
+
+test('Function nao permite que o cliente controle a versao do lote', () => {
+  assert.match(functionSource, /registrar_fechamento_csv_produtos/);
+  assert.doesNotMatch(functionSource, /validacao_versao\s*:/i);
+  assert.doesNotMatch(functionSource, /payload_normalizado\s*:/i);
 });
 
 test('SQL rejeita ambiguidade produto/máquina antes da primeira escrita', () => {

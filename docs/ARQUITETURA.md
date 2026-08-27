@@ -425,6 +425,13 @@ continuar o lote. Ela não poderá afetar a outra loja.
 
 ### Base implementada e contrato planejado — zeragem e reconciliacao do CSV
 
+**Corte legado v1 → oficial v2.** A migration 36 marca os lotes existentes como
+v1 sem modificar seu conteudo, inclusive duplicidades de competencia e
+`data_movimento` nula. O indice de competencia considera somente registros v2
+com data preenchida. A RPC oficial grava explicitamente v2 e aplica replay,
+locks e bloqueios de corretivo apenas a esse conjunto; lotes v1 continuam
+preservados para consulta historica.
+
 Zeragem, ajuste e abertura de cobertura continuam **planejados / ainda nao
 implementados**. A migration 36 implementa somente a fundacao transacional:
 um fechamento oficial por competencia, replay idempotente do mesmo arquivo e

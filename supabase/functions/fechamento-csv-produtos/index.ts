@@ -136,6 +136,8 @@ Deno.serve(async (request) => {
       return jsonResponse({ error: safeErrorMessage(error) }, 400, headers);
     }
 
+    // A versao do fechamento e definida exclusivamente pela RPC (v2); o
+    // cliente nunca pode escolher ou forjar validacao_versao.
     const { data, error } = await adminClient.rpc("registrar_fechamento_csv_produtos", {
       p_linhas: prepared.lines,
       p_arquivo_nome: fileName,

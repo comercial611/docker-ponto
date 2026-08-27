@@ -3,29 +3,16 @@ begin;
 set local lock_timeout = '10s';
 set local statement_timeout = '90s';
 
--- A competencia passa a identificar um unico fechamento oficial. A migration
--- falha sem alterar nada se o historico existente contrariar essa premissa.
-do $$
-begin
-  if exists (
-    select 1
-    from public.baixas_csv_lotes
-    where data_movimento is not null
-    group by data_movimento
-    having count(*) > 1
-  ) then
-    raise exception 'Existem varios fechamentos CSV para a mesma competencia. Revise o historico antes de aplicar a migration 36.';
-  end if;
-end;
-$$;
-
-create unique index baixas_csv_lotes_competencia_uidx
-  on public.baixas_csv_lotes (data_movimento)
-  where data_movimento is not null;
-
 alter table public.baixas_csv_lotes
   add column validacao_versao smallint not null default 1,
   add column payload_normalizado jsonb;
+
+-- O legado permanece v1 e nao participa da unicidade por competencia. Apenas
+-- fechamentos oficiais novos (v2) passam a ser unicos e identificaveis.
+create unique index baixas_csv_lotes_competencia_uidx
+  on public.baixas_csv_lotes (data_movimento)
+  where validacao_versao >= 2
+    and data_movimento is not null;
 
 alter table public.baixas_csv_lotes
   add constraint baixas_csv_lotes_validacao_versao_check
@@ -485,7 +472,8 @@ begin
   if exists (
     select 1
     from public.baixas_csv_lotes l
-    where l.data_movimento = p_data_movimento
+    where l.validacao_versao >= 2
+      and l.data_movimento = p_data_movimento
   ) then
     raise exception 'A competencia % ja possui CSV oficial. Arquivos corretivos exigem revisao manual auditada.',
       to_char(p_data_movimento, 'DD/MM/YYYY')

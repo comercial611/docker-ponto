@@ -52,7 +52,7 @@ Esta pasta documenta a configuracao de seguranca usada no Supabase de producao.
 - O navegador aplica o fechamento CSV exclusivamente pela Edge Function `fechamento-csv-produtos`; somente `service_role` executa `public.registrar_fechamento_csv_produtos`, e a funcao inferior `registrar_baixa_csv_produtos` nao aceita chamadas diretas.
 - Cada baixa por CSV gera um lote de conferencia em `public.baixas_csv_lotes` e itens em `public.baixas_csv_itens`.
 - O mesmo arquivo CSV nao pode ser aplicado novamente, mesmo que a data de movimento seja alterada.
-- Cada competencia aceita somente um CSV oficial. Repetir exatamente o mesmo hash e payload e idempotente; outro arquivo para a competencia e tratado como corretivo e bloqueado para revisao manual.
+- Cada competencia aceita somente um CSV oficial **v2**. Lotes legados **v1** permanecem preservados, mesmo quando repetem competencia; repetir exatamente o mesmo hash e payload v2 e idempotente, e outro arquivo para a competencia v2 e tratado como corretivo e bloqueado para revisao manual.
 - Historico de movimentacao fica centralizado no Supabase.
 
 ## Arquivos
@@ -91,7 +91,7 @@ Esta pasta documenta a configuracao de seguranca usada no Supabase de producao.
 - `32-oauth-state-nuvemshop.sql`: registra somente o hash SHA-256 das tentativas OAuth, limita cada state a dez minutos e uso unico, reserva callbacks atomicamente e conclui a tentativa junto com a conexao na mesma transacao.
 - `33-desativacao-auditada-vinculos-nuvemshop.sql`: substitui a desativacao direta de vinculos por uma RPC transacional exclusiva do servidor, com auditoria por loja; o navegador deixa de ter permissao de atualizar ou excluir vinculos. A Edge Function confirma a ausencia remota antes do caminho de vinculo quebrado; o caminho manual exige motivo administrativo. Nenhum dos dois altera estoque, CSV, preco, catalogo externo ou outro vinculo.
 - `34-registrar-entrada-estoque.sql`: cria o ledger imutavel de entradas locais e a RPC administrativa atomica e idempotente para somar varios produtos ou variantes. O navegador nao grava diretamente no ledger; a operacao, seus itens, os saldos e o historico `entrada_mercadoria` confirmam juntos ou sofrem rollback. Nao consulta nem altera Nuvemshop, CSV, preco, catalogo ou vinculos.
-- `36-base-reconciliacao-zeragem-csv.sql`: torna `registrar_fechamento_csv_produtos` a fronteira transacional exclusiva de `service_role`, revalida o administrador indicado pela Function, valida e agrega todas as linhas, calcula o resumo, aplica um unico fechamento por competencia e bloqueia corretivos ou divergencias integralmente. Cria as tabelas imutaveis de cobertura e eventos sem liberar insercao ou zeragem. Nao consulta nem escreve Nuvemshop.
+- `36-base-reconciliacao-zeragem-csv.sql`: torna `registrar_fechamento_csv_produtos` a fronteira transacional exclusiva de `service_role`, revalida o administrador indicado pela Function, valida e agrega todas as linhas, calcula o resumo, aplica um unico fechamento oficial v2 por competencia e bloqueia corretivos ou divergencias integralmente. Lotes historicos permanecem preservados como legado v1 (inclusive competencias repetidas e datas nulas); somente v2 participa da unicidade. Cria as tabelas imutaveis de cobertura e eventos sem liberar insercao ou zeragem. Nao consulta nem escreve Nuvemshop.
 - `functions/fechamento-csv-produtos`: exige JWT e perfil administrador, recebe o arquivo CSV bruto, valida e normaliza UTF-8, calcula o hash SHA-256 e encaminha somente linhas canonicas, metadados e UUID autenticado para a RPC exclusiva do servidor.
 - `functions/nuvemshop-oauth-iniciar`: permite somente a administradores autenticados iniciar uma autorizacao, gera o state no servidor e retorna a URL oficial da Nuvemshop.
 - `functions/nuvemshop-oauth`: exige e consome o state antes de trocar o code, conclui a instalacao por RPC transacional e salva somente o token criptografado, sem exibir a credencial.
@@ -166,6 +166,12 @@ sincronizacao normal. Cada PR de implementação deverá atualizar este README,
 o README raiz e `docs/ARQUITETURA.md`.
 
 ### Base implementada e contrato planejado — zeragem e reconciliacao do CSV
+
+O corte de versao e explicito: lotes anteriores a esta migration sao legado
+**v1**, recebem o default `validacao_versao = 1` e ficam fora da unicidade por
+competencia. A RPC oficial grava sempre `validacao_versao = 2`; apenas esses
+fechamentos novos sao sujeitos ao bloqueio de competencia e ao replay por
+payload/hash. Nenhum lote v1 e reescrito ou removido.
 
 Zeragem, ajuste e abertura de cobertura continuam **planejados / ainda nao
 implementados**. A migration 36 implementa apenas a base: fechamento unico por

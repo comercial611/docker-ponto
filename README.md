@@ -128,6 +128,12 @@ em preco, catalogo, OAuth, LGPD, vinculos ou nos campos de ultima baixa.
 
 ### Contrato planejado — zeragem intradiaria e reconciliacao do CSV
 
+O corte de compatibilidade da migration 36 preserva todos os lotes existentes
+como legado **v1**. Eles nao sao alterados, apagados ou consolidados, inclusive
+quando possuem a mesma competencia ou `data_movimento` nula. Somente novos
+fechamentos oficiais gravados pela RPC server-side sao **v2** e participam da
+unicidade por competencia e das regras de replay.
+
 O contrato de zeragem abaixo continua **planejado / ainda nao implementado**.
 A migration 36 desta etapa implementa apenas a fundacao segura do fechamento.
 A aplicacao oficial deixa de confiar no hash, no produto resolvido ou no resumo
