@@ -253,6 +253,8 @@ local de estoque confirmado da respectiva loja.
 
 - `baixas_csv_lotes`
 - `baixas_csv_itens`
+- `estoque_coberturas_csv` (fundacao imutavel; sem criacao de cobertura nesta etapa)
+- `estoque_cobertura_csv_eventos` (eventos imutaveis de reconciliacao)
 
 ### Ledger de entrada local
 
@@ -371,12 +373,11 @@ nunca pode gerar reposicao automatica.
 
 **Regra atual, enquanto a zeragem com cobertura ainda nao estiver implementada:**
 se um produto acabou somente por vendas ainda pendentes do CSV, uma operacao
-humana podera zerar somente a disponibilidade externa, mas o saldo local
-aguardara o CSV. Assim, nenhuma segunda baixa local sera estimada. Um saldo alvo
-local que possa incorporar vendas pendentes nao deve ser aplicado antes do
-fechamento; ajustes intradiarios precisam declarar causa independente do CSV.
-O contrato futuro de zeragem local com cobertura substituira esse procedimento
-somente apos migration 36, RPC, interface e rollout aprovados.
+humana zera o saldo local e o externo. Antes do CSV oficial seguinte, o
+administrador recompõe temporariamente no saldo local a mesma quantidade do
+arquivo para que a baixa oficial termine novamente em zero. A migration 36 nao
+automatiza nem audita essa compensacao. O contrato futuro de cobertura
+substituira o procedimento somente apos RPC, interface e rollout aprovados.
 
 ### Modelo atual e extensoes futuras
 
@@ -422,10 +423,37 @@ A pausa/emergência será individual por loja, com motivo, usuário e data,
 verificada no servidor ao autorizar, reservar, iniciar cada chamada externa e
 continuar o lote. Ela não poderá afetar a outra loja.
 
-### Contrato planejado — zeragem intradiaria e reconciliacao do CSV
+### Base implementada e contrato planejado — zeragem e reconciliacao do CSV
 
-Este contrato e **planejado / ainda nao implementado**. O CSV diario devera
-ser unico, completo e oficial para as vendas da competencia. Se um produto
+**Corte legado v1 → oficial v2.** A migration 36 marca os lotes existentes como
+v1 sem modificar seu conteudo, inclusive duplicidades de competencia e
+`data_movimento` nula. O indice de competencia considera somente registros v2
+com data preenchida. A RPC oficial grava explicitamente v2 e aplica replay,
+locks e bloqueios de corretivo apenas a esse conjunto; lotes v1 continuam
+preservados para consulta historica.
+
+Zeragem, ajuste e abertura de cobertura continuam **planejados / ainda nao
+implementados**. A migration 36 implementa somente a fundacao transacional:
+um fechamento oficial por competencia, replay idempotente do mesmo arquivo e
+payload, linhas completas classificadas e agregadas no servidor, resumo
+calculado pelo banco e bloqueio integral de ambiguidades e divergencias. A RPC
+inferior deixa de aceitar chamadas diretas.
+
+A previa do Admin continua local e exclusivamente diagnostica. A aplicacao
+oficial segue para `fechamento-csv-produtos` como arquivo bruto, nome e
+competencia. A Function exige JWT e administrador, valida UTF-8, tamanho,
+estrutura e todas as linhas, rejeita ambiguidade entre produto e maquina e
+calcula o SHA-256 do conteudo normalizado. Ela chama, com `service_role`, a RPC
+transacional e envia somente o UUID autenticado como operador. A RPC revalida
+esse UUID em `auth.users` e `public.perfis`, deriva o e-mail do banco e nao pode
+ser executada por `anon` ou `authenticated`. Produto resolvido, resumo e hash do
+navegador nao sao autoritativos. O Admin valida o resultado estruturado antes
+de indicar sucesso ou limpar o estado da tela.
+
+As tabelas de cobertura e eventos sao imutaveis e legiveis apenas por admin;
+nenhum papel do navegador pode inserir cobertura e nenhuma RPC de zeragem foi
+criada. O CSV diario deve ser unico, completo e oficial para as vendas da
+competencia. Se um produto
 acabar durante o dia por venda remota, a futura zeragem auditada podera levar
 o saldo local a zero e publicar alvo externo zero, somente apos confirmacao
 humana. A venda remota nao criara baixa estimada no estoque local.
@@ -448,8 +476,9 @@ A escrita externa futura ficara separada da previa generica e seguira a cadeia:
 releitura -> confirmacao`. As lojas `3514029` e `6696910` compartilham um
 unico estoque fisico; a quantidade publicada nao sera dividida entre elas.
 
-A proxima implementacao prevista sera a migration 36. A migration 35 continua
-reservada para LGPD. Toda PR futura desta arquitetura devera atualizar
+A migration 35 continua reservada para LGPD. A migration 36 nao disponibiliza
+zeragem nem escrita externa; abertura de cobertura e operacoes causais exigem
+uma etapa posterior aprovada. Toda PR futura desta arquitetura devera atualizar
 `README.md`, `supabase/README.md` e este documento.
 
 Preços, CSV, catálogo, OAuth, LGPD e sincronização normal permanecem fora
@@ -460,18 +489,19 @@ e este documento antes de ser encerrada.
 
 1. Documentação e invariantes. **Concluido.**
 2. Ledger e interface de entrada local. **Concluido na migration 34.**
-3. Ajuste, zeragem e reconciliacao (migration 36).
-4. Pausa por loja.
-5. Outbox e autorizações.
-6. Prévia intradiária.
-7. Piloto em uma loja.
-8. Segunda loja, falhas e retry.
-9. Reconciliação pós-CSV.
+3. Base segura do fechamento e reconciliacao CSV. **Implementada na migration 36.**
+4. Ajuste, zeragem e abertura auditada de cobertura.
+5. Pausa por loja.
+6. Outbox e autorizações.
+7. Prévia intradiária.
+8. Piloto em uma loja.
+9. Segunda loja, falhas e retry.
+10. Reconciliação pós-CSV com coberturas reais.
 
-Publicacao intradiaria na Nuvemshop, outbox, pausas, janelas, ajuste, zeragem e
-reconciliacao pos-CSV continuam planejados e nao implementados. A migration 34
-nao cria Edge Function, preview externo, outbox ou qualquer chamada a
-Nuvemshop.
+Publicacao intradiaria na Nuvemshop, outbox, pausas, janelas, ajuste e zeragem
+continuam planejados e nao implementados. A Edge Function criada nesta fase se
+limita ao fechamento CSV oficial; migrations 34 e 36 nao criam preview externo,
+outbox ou qualquer chamada a Nuvemshop.
 
 ## 12. Fora do escopo atual
 

@@ -12,3 +12,6 @@ verify_jwt = true
 
 [functions.nuvemshop-vinculo-quebrado]
 verify_jwt = true
+
+[functions.fechamento-csv-produtos]
+verify_jwt = true

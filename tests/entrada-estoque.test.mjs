@@ -462,7 +462,7 @@ test('novo fluxo usa somente a RPC local e conteúdo dinâmico seguro', () => {
   assert.doesNotMatch(uiSource, /\bproduct\.quantidade(?:_110v|_220v)?\s*=/);
   assert.match(adminHtml, />Registrar entrada</);
   assert.match(adminHtml, /css\/admin\.css\?v=20260822-entrada-busca-1/);
-  assert.match(adminHtml, /js\/admin\.js\?v=20260822-entrada-busca-1/);
+  assert.match(adminHtml, /js\/admin\.js\?v=20260825-csv-reconciliacao-2/);
   assert.match(adminHtml, /id="entrada-estoque-confirm"/);
   assert.match(adminHtml, /id="entrada-estoque-feedback" role="alert" aria-live="assertive"/);
 
