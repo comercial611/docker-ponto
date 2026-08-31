@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Estoque - Administração</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<link rel="stylesheet" href="css/admin.css?v=20260822-entrada-busca-1">
+<link rel="stylesheet" href="css/admin.css?v=20260831-selecionar-15-1">
 </head>
 <body>
 
@@ -664,6 +664,10 @@
     </div>
     <div class="nuvemshop-pilot-application" id="nuvemshop-pilot-application">
       <div class="nuvemshop-pilot-application-title" id="nuvemshop-pilot-selection-title">Selecionar item do piloto</div>
+      <div class="nuvemshop-batch-selection-tools" id="nuvemshop-batch-selection-tools" hidden>
+        <button type="button" class="btn-cancel" id="nuvemshop-batch-select-next" onclick="selectNextNuvemshopBatchItems()">Selecionar próximos 15</button>
+        <span class="nuvemshop-batch-selection-count" id="nuvemshop-batch-selection-count" role="status" aria-live="polite"></span>
+      </div>
       <div class="nuvemshop-pilot-items" id="nuvemshop-pilot-items"></div>
       <div class="form-field nuvemshop-pilot-confirmation">
         <label for="nuvemshop-pilot-confirmation">Confirmacao obrigatoria</label>
@@ -881,6 +885,6 @@
 <script src="js/produto-busca.js?v=20260725-tags-fornecedor-1"></script>
 <script src="js/admin-nuvemshop-auditoria.js?v=20260724-admin-auditoria-1"></script>
 <script src="js/admin-notificacoes.js?v=20260725-seguranca-notificacoes-1"></script>
-<script src="js/admin.js?v=20260825-csv-reconciliacao-2"></script>
+<script src="js/admin.js?v=20260831-selecionar-15-1"></script>
 </body>
 </html>

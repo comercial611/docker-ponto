@@ -435,6 +435,99 @@ const EntradaEstoqueCore = (() => {
 })();
 // END ENTRADA_ESTOQUE_CORE
 
+// BEGIN NUVEMSHOP_BATCH_SELECTION_CORE
+const NuvemshopBatchSelectionCore = (() => {
+  function positiveSafeInteger(value) {
+    const normalized = Number(value);
+    return Number.isSafeInteger(normalized) && normalized > 0 ? normalized : null;
+  }
+
+  function normalizeIds(values) {
+    const normalized = [];
+    const seen = new Set();
+    for (const value of Array.isArray(values) ? values : []) {
+      const id = positiveSafeInteger(value);
+      if (id === null || seen.has(id)) continue;
+      seen.add(id);
+      normalized.push(id);
+    }
+    return normalized;
+  }
+
+  function isEligibleItem(item) {
+    if (!item || item.status !== 'alteraria') return false;
+    if (positiveSafeInteger(item.auditoria_item_id) === null) return false;
+    if (positiveSafeInteger(item.vinculo_id) === null) return false;
+    if (item.disabled === true || item.aplicado === true || item.incerto === true) return false;
+    return item.resultado == null || String(item.resultado).trim() === '';
+  }
+
+  function orderedEligibleItems(items, visibleLinkIds) {
+    const eligibleByLink = new Map();
+    const seenAuditIds = new Set();
+    for (const item of Array.isArray(items) ? items : []) {
+      if (!isEligibleItem(item)) continue;
+      const auditId = positiveSafeInteger(item.auditoria_item_id);
+      const linkId = positiveSafeInteger(item.vinculo_id);
+      if (seenAuditIds.has(auditId) || eligibleByLink.has(linkId)) continue;
+      seenAuditIds.add(auditId);
+      eligibleByLink.set(linkId, item);
+    }
+
+    return normalizeIds(visibleLinkIds)
+      .map(linkId => eligibleByLink.get(linkId))
+      .filter(Boolean);
+  }
+
+  function selectionSummary(selectedIds, eligibleItems, maxItems) {
+    const limit = positiveSafeInteger(maxItems) || 0;
+    const selected = normalizeIds(selectedIds).slice(0, limit);
+    const selectedSet = new Set(selected);
+    const eligibleIds = normalizeIds(
+      (Array.isArray(eligibleItems) ? eligibleItems : []).map(item => item?.auditoria_item_id)
+    );
+    return {
+      selectedIds: selected,
+      selectedCount: selected.length,
+      eligibleRemaining: eligibleIds.filter(id => !selectedSet.has(id)).length
+    };
+  }
+
+  function selectNext(selectedIds, eligibleItems, maxItems) {
+    const summary = selectionSummary(selectedIds, eligibleItems, maxItems);
+    const availableIds = normalizeIds(
+      (Array.isArray(eligibleItems) ? eligibleItems : []).map(item => item?.auditoria_item_id)
+    ).filter(id => !summary.selectedIds.includes(id));
+
+    if (summary.selectedCount === 0 && availableIds.length === 1) {
+      return {
+        ...summary,
+        addedIds: [],
+        requiresIndividual: true
+      };
+    }
+
+    const addedIds = availableIds.slice(0, Math.max(0, maxItems - summary.selectedCount));
+    const nextSelectedIds = [...summary.selectedIds, ...addedIds];
+    return {
+      selectedIds: nextSelectedIds,
+      selectedCount: nextSelectedIds.length,
+      eligibleRemaining: availableIds.length - addedIds.length,
+      addedIds,
+      requiresIndividual: false
+    };
+  }
+
+  function canSelectNext(selectedIds, eligibleItems, maxItems, busy = false) {
+    if (busy) return false;
+    const summary = selectionSummary(selectedIds, eligibleItems, maxItems);
+    return summary.selectedCount < maxItems && summary.eligibleRemaining > 0;
+  }
+
+  return { isEligibleItem, orderedEligibleItems, selectionSummary, selectNext, canSelectNext };
+})();
+// END NUVEMSHOP_BATCH_SELECTION_CORE
+
 let products = [];
 let vendedores = [];
 let deleteTargetId = null;
@@ -493,6 +586,7 @@ let nuvemshopPilotSelectedItemId = null;
 let nuvemshopPilotMode = 'pilot';
 let nuvemshopBatchSelectedItemIds = [];
 const NUVEMSHOP_BATCH_MAX_ITEMS = 15;
+let nuvemshopPilotVerifying = false;
 let nuvemshopPilotApplying = false;
 let nuvemshopPilotApplicationLocked = false;
 let nuvemshopPilotWindowBusy = false;
@@ -3041,6 +3135,26 @@ function buildNuvemshopSyncPreviewRows() {
     });
 }
 
+function filterNuvemshopSyncPreviewRows(rows) {
+  const statusFilter = document.getElementById('nuvemshop-preview-filter').value;
+  const search = normalizeCode(document.getElementById('nuvemshop-preview-search').value);
+  return rows.filter(row => {
+    const matchesStatus = !statusFilter ||
+      (statusFilter === 'different' && ['increase', 'decrease'].includes(row.previewStatus)) ||
+      row.previewStatus === statusFilter;
+    const haystack = normalizeCode([
+      row.remoteName,
+      row.variantLabel,
+      row.sku,
+      row.barcode,
+      row.localProduct.nome,
+      row.localProduct.id,
+      row.linkVoltage
+    ].filter(Boolean).join(' '));
+    return matchesStatus && (!search || haystack.includes(search));
+  });
+}
+
 async function openNuvemshopSyncPreview() {
   const selectedStoreId = selectedNuvemshopStoreId();
   if (!selectedStoreId) return;
@@ -3061,23 +3175,7 @@ function renderNuvemshopSyncPreview() {
   if (!nuvemshopPreviewGenerated) return;
   const section = document.getElementById('nuvemshop-sync-preview');
   const allRows = buildNuvemshopSyncPreviewRows();
-  const statusFilter = document.getElementById('nuvemshop-preview-filter').value;
-  const search = normalizeCode(document.getElementById('nuvemshop-preview-search').value);
-  const filteredRows = allRows.filter(row => {
-    const matchesStatus = !statusFilter ||
-      (statusFilter === 'different' && ['increase', 'decrease'].includes(row.previewStatus)) ||
-      row.previewStatus === statusFilter;
-    const haystack = normalizeCode([
-      row.remoteName,
-      row.variantLabel,
-      row.sku,
-      row.barcode,
-      row.localProduct.nome,
-      row.localProduct.id,
-      row.linkVoltage
-    ].filter(Boolean).join(' '));
-    return matchesStatus && (!search || haystack.includes(search));
-  });
+  const filteredRows = filterNuvemshopSyncPreviewRows(allRows);
 
   section.style.display = 'block';
   document.getElementById('nuvemshop-preview-time').textContent = nuvemshopPreviewGeneratedAt
@@ -3198,6 +3296,7 @@ function openNuvemshopApplicationModal(mode) {
   nuvemshopPilotReadiness = null;
   nuvemshopPilotSelectedItemId = null;
   nuvemshopBatchSelectedItemIds = [];
+  nuvemshopPilotVerifying = false;
   nuvemshopPilotApplying = false;
   nuvemshopPilotApplicationLocked = false;
   nuvemshopPilotWindowBusy = false;
@@ -3263,11 +3362,89 @@ async function closeNuvemshopPilotModal() {
 
 function nuvemshopPilotCandidates() {
   if (!Array.isArray(nuvemshopServerSimulation?.itens)) return [];
-  return nuvemshopServerSimulation.itens.filter(item =>
-    item?.status === 'alteraria' &&
-    Number.isSafeInteger(Number(item.auditoria_item_id)) &&
-    Number(item.auditoria_item_id) > 0
+  const visibleLinkIds = isNuvemshopBatchMode()
+    ? filterNuvemshopSyncPreviewRows(buildNuvemshopSyncPreviewRows())
+      .map(row => row.savedLinkId)
+    : nuvemshopServerSimulation.itens.map(item => item?.vinculo_id);
+  return NuvemshopBatchSelectionCore.orderedEligibleItems(
+    nuvemshopServerSimulation.itens,
+    visibleLinkIds
   );
+}
+
+function resetNuvemshopBatchSelectionState() {
+  nuvemshopPilotReadiness = null;
+  document.getElementById('nuvemshop-pilot-result').className = 'nuvemshop-pilot-result';
+  document.getElementById('nuvemshop-pilot-window').className = 'nuvemshop-pilot-window';
+  document.getElementById('nuvemshop-pilot-confirmation').value = '';
+  document.getElementById('nuvemshop-pilot-window-confirmation').value = '';
+  document.getElementById('nuvemshop-pilot-error').textContent = '';
+  const applicationResult = document.getElementById('nuvemshop-pilot-application-result');
+  applicationResult.className = 'nuvemshop-pilot-application-result';
+  applicationResult.innerHTML = '';
+}
+
+function updateNuvemshopBatchSelectionControls() {
+  const tools = document.getElementById('nuvemshop-batch-selection-tools');
+  const button = document.getElementById('nuvemshop-batch-select-next');
+  const counter = document.getElementById('nuvemshop-batch-selection-count');
+  if (!tools || !button || !counter) return;
+
+  const batchMode = isNuvemshopBatchMode();
+  tools.hidden = !batchMode;
+  if (!batchMode) return;
+
+  const candidates = nuvemshopPilotCandidates();
+  const selectedIds = selectedNuvemshopApplicationItemIds();
+  const summary = NuvemshopBatchSelectionCore.selectionSummary(
+    selectedIds,
+    candidates,
+    NUVEMSHOP_BATCH_MAX_ITEMS
+  );
+  const busy = nuvemshopPilotVerifying ||
+    nuvemshopPilotApplying ||
+    nuvemshopPilotWindowBusy ||
+    nuvemshopPilotApplicationLocked ||
+    nuvemshopPilotReadiness?.janela_ativa === true;
+
+  counter.textContent = `${summary.selectedCount} selecionados de ${NUVEMSHOP_BATCH_MAX_ITEMS} · ${summary.eligibleRemaining} elegíveis restantes`;
+  button.disabled = !NuvemshopBatchSelectionCore.canSelectNext(
+    selectedIds,
+    candidates,
+    NUVEMSHOP_BATCH_MAX_ITEMS,
+    busy
+  );
+}
+
+function selectNextNuvemshopBatchItems() {
+  if (!isNuvemshopBatchMode()) return;
+  if (
+    nuvemshopPilotVerifying ||
+    nuvemshopPilotApplying ||
+    nuvemshopPilotWindowBusy ||
+    nuvemshopPilotApplicationLocked ||
+    nuvemshopPilotReadiness?.janela_ativa
+  ) return;
+
+  const selection = NuvemshopBatchSelectionCore.selectNext(
+    nuvemshopBatchSelectedItemIds,
+    nuvemshopPilotCandidates(),
+    NUVEMSHOP_BATCH_MAX_ITEMS
+  );
+  if (selection.requiresIndividual) {
+    document.getElementById('nuvemshop-pilot-error').textContent =
+      'Há somente 1 item elegível neste filtro. Use o fluxo individual “Verificar piloto”.';
+    updateNuvemshopBatchSelectionControls();
+    return;
+  }
+  if (!selection.addedIds.length) {
+    updateNuvemshopBatchSelectionControls();
+    return;
+  }
+
+  nuvemshopBatchSelectedItemIds = selection.selectedIds;
+  resetNuvemshopBatchSelectionState();
+  renderNuvemshopPilotApplication();
 }
 
 function renderNuvemshopPilotApplication() {
@@ -3280,8 +3457,14 @@ function renderNuvemshopPilotApplication() {
   const selectedIds = selectedNuvemshopApplicationItemIds();
   const confirmation = nuvemshopPilotReadiness?.confirmacao_exigida ||
     expectedNuvemshopApplicationConfirmation();
+  const selectionDisabled = nuvemshopPilotVerifying ||
+    nuvemshopPilotApplying ||
+    nuvemshopPilotWindowBusy ||
+    nuvemshopPilotApplicationLocked ||
+    nuvemshopPilotReadiness?.janela_ativa === true;
 
   section.classList.add('visible');
+  updateNuvemshopBatchSelectionControls();
   input.placeholder = batchMode && selectedIds.length < 2
     ? `Selecione de 2 a ${NUVEMSHOP_BATCH_MAX_ITEMS} itens primeiro`
     : confirmation;
@@ -3304,7 +3487,7 @@ function renderNuvemshopPilotApplication() {
     const selected = batchMode
       ? nuvemshopBatchSelectedItemIds.includes(itemId)
       : itemId === nuvemshopPilotSelectedItemId;
-    return `<button type="button" class="nuvemshop-pilot-item${selected ? ' selected' : ''}" onclick="selectNuvemshopPilotItem(${itemId})">
+    return `<button type="button" class="nuvemshop-pilot-item${selected ? ' selected' : ''}" onclick="selectNuvemshopPilotItem(${itemId})"${selectionDisabled ? ' disabled' : ''}>
       <input type="${batchMode ? 'checkbox' : 'radio'}" name="nuvemshop-pilot-item" tabindex="-1"${selected ? ' checked' : ''}>
       <span>
         <span class="nuvemshop-pilot-item-name">${escapeHtml(item.produto_nome)}</span>
@@ -3336,8 +3519,10 @@ function renderNuvemshopPilotApplication() {
 function selectNuvemshopPilotItem(itemId) {
   const normalizedItemId = Number(itemId);
   if (
+    nuvemshopPilotVerifying ||
     nuvemshopPilotApplicationLocked ||
     nuvemshopPilotApplying ||
+    nuvemshopPilotWindowBusy ||
     nuvemshopPilotReadiness?.janela_ativa
   ) return;
   if (!nuvemshopPilotCandidates().some(item => Number(item.auditoria_item_id) === normalizedItemId)) return;
@@ -3350,17 +3535,11 @@ function selectNuvemshopPilotItem(itemId) {
       document.getElementById('nuvemshop-pilot-error').textContent = `O lote controlado aceita no maximo ${NUVEMSHOP_BATCH_MAX_ITEMS} itens.`;
       return;
     }
-    nuvemshopPilotReadiness = null;
-    document.getElementById('nuvemshop-pilot-result').className = 'nuvemshop-pilot-result';
-    document.getElementById('nuvemshop-pilot-window').className = 'nuvemshop-pilot-window';
-    document.getElementById('nuvemshop-pilot-confirmation').value = '';
-    document.getElementById('nuvemshop-pilot-window-confirmation').value = '';
-    document.getElementById('nuvemshop-pilot-error').textContent = '';
+    resetNuvemshopBatchSelectionState();
   } else {
     nuvemshopPilotSelectedItemId = normalizedItemId;
   }
   renderNuvemshopPilotApplication();
-  document.getElementById('nuvemshop-pilot-application-result').className = 'nuvemshop-pilot-application-result';
 }
 
 function updateNuvemshopPilotApplyButton() {
@@ -3474,6 +3653,7 @@ async function runNuvemshopPilotWindow(enableWindow) {
   nuvemshopPilotWindowBusy = true;
   errorElement.textContent = '';
   updateNuvemshopPilotWindowButtons();
+  updateNuvemshopBatchSelectionControls();
 
   try {
     const { data, error } = await sb.functions.invoke('nuvemshop-sincronizacao', {
@@ -3545,6 +3725,7 @@ async function runNuvemshopPilotWindow(enableWindow) {
   } finally {
     nuvemshopPilotWindowBusy = false;
     updateNuvemshopPilotWindowButtons();
+    updateNuvemshopBatchSelectionControls();
   }
 }
 
@@ -3608,6 +3789,8 @@ async function runNuvemshopPilotReadiness() {
     return;
   }
 
+  nuvemshopPilotVerifying = true;
+  updateNuvemshopBatchSelectionControls();
   try {
     const { data, error } = await sb.functions.invoke('nuvemshop-sincronizacao', {
       body: {
@@ -3636,8 +3819,11 @@ async function runNuvemshopPilotReadiness() {
     console.error('Falha na verificacao do piloto Nuvemshop', error);
     errorElement.textContent = error?.message || 'Nao foi possivel verificar as protecoes do piloto.';
   } finally {
+    nuvemshopPilotVerifying = false;
+    renderNuvemshopPilotApplication();
     button.disabled = false;
     button.textContent = 'Executar novamente';
+    updateNuvemshopBatchSelectionControls();
   }
 }
 
@@ -3678,6 +3864,7 @@ async function runNuvemshopPilotApplication() {
   resultElement.innerHTML = '';
   button.textContent = 'Aplicando...';
   updateNuvemshopPilotApplyButton();
+  updateNuvemshopBatchSelectionControls();
 
   try {
     const { data, error } = await sb.functions.invoke('nuvemshop-sincronizacao', {
@@ -3793,6 +3980,7 @@ async function runNuvemshopPilotApplication() {
       ? 'Nova validacao necessaria'
       : (batchMode ? 'Aplicar lote' : 'Aplicar 1 item');
     updateNuvemshopPilotApplyButton();
+    updateNuvemshopBatchSelectionControls();
   }
 }
 
