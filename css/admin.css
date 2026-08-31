@@ -554,6 +554,9 @@
   .nuvemshop-pilot-application { display: none; margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--border); }
   .nuvemshop-pilot-application.visible { display: block; }
   .nuvemshop-pilot-application-title { margin-bottom: 10px; font-size: 13px; font-weight: 700; }
+  .nuvemshop-batch-selection-tools { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+  .nuvemshop-batch-selection-tools[hidden] { display: none; }
+  .nuvemshop-batch-selection-count { color: var(--muted); font-size: 11px; line-height: 1.4; text-align: right; }
   .nuvemshop-pilot-items { display: grid; gap: 8px; max-height: 230px; overflow-y: auto; padding-right: 3px; }
   .nuvemshop-pilot-item { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; align-items: center; gap: 10px; width: 100%; border: 1px solid var(--border); border-radius: 4px; background: var(--bg); padding: 11px 12px; color: var(--text); text-align: left; cursor: pointer; }
   .nuvemshop-pilot-item:hover { border-color: var(--accent); }
