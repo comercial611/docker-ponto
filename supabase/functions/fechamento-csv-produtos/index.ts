@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders, jsonResponse } from "../_shared/http.ts";
-import { prepareCsv } from "./csv-core.mjs";
+import { prepareCsv, validateCandidates } from "./csv-core.mjs";
+import { prepareFuturaVendasXls } from "../_shared/futura-vendas-core.mjs";
 
 const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
 const REQUEST_FIELDS = new Set(["arquivo_base64", "arquivo_nome", "competencia"]);
@@ -31,7 +32,9 @@ function validDate(value: unknown): string | null {
 function validFileName(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const normalized = value.trim();
-  return normalized.length > 0 && normalized.length <= 255 && normalized.toLowerCase().endsWith(".csv")
+  const lowerName = normalized.toLowerCase();
+  return normalized.length > 0 && normalized.length <= 255
+    && (lowerName.endsWith(".csv") || lowerName.endsWith(".xls"))
     ? normalized
     : null;
 }
@@ -43,7 +46,7 @@ function safeErrorMessage(error: unknown): string {
     ? error.message
     : "";
   const safePrefixes = [
-    "O arquivo CSV", "O conteudo", "A linha", "A competencia", "A quantidade", "O CSV", "Produto",
+    "O arquivo", "O relatorio", "O conteudo", "A linha", "A competencia", "A quantidade", "O CSV", "Produto",
     "Existe produto", "Existe cobertura", "Nenhum produto", "Informe",
   ];
   return safePrefixes.some((prefix) => message.startsWith(prefix))
@@ -92,12 +95,12 @@ Deno.serve(async (request) => {
 
     const payload = asRecord(await request.json().catch(() => null));
     if (!payload || Object.keys(payload).some((field) => !REQUEST_FIELDS.has(field))) {
-      return jsonResponse({ error: "Solicitacao de fechamento CSV invalida." }, 400, headers);
+      return jsonResponse({ error: "Solicitacao de fechamento CSV/XLS invalida." }, 400, headers);
     }
     const fileName = validFileName(payload.arquivo_nome);
     const competence = validDate(payload.competencia);
     if (!fileName || !competence || typeof payload.arquivo_base64 !== "string") {
-      return jsonResponse({ error: "Informe arquivo CSV e competencia validos." }, 400, headers);
+      return jsonResponse({ error: "Informe arquivo CSV ou XLS e competencia validos." }, 400, headers);
     }
 
     const supabaseUrl = requiredEnv("SUPABASE_URL");
@@ -131,7 +134,15 @@ Deno.serve(async (request) => {
 
     let prepared;
     try {
-      prepared = await prepareCsv({ arquivo_base64: payload.arquivo_base64, products });
+      if (fileName.toLowerCase().endsWith(".xls")) {
+        prepared = await prepareFuturaVendasXls({ arquivo_base64: payload.arquivo_base64 });
+        if (prepared.competencia !== competence) {
+          throw new Error("A competencia escolhida deve coincidir com o unico dia informado no relatorio Futura.");
+        }
+        validateCandidates(prepared.lines, products);
+      } else {
+        prepared = await prepareCsv({ arquivo_base64: payload.arquivo_base64, products });
+      }
     } catch (error) {
       return jsonResponse({ error: safeErrorMessage(error) }, 400, headers);
     }

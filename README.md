@@ -99,7 +99,8 @@ Esta etapa altera exclusivamente o estoque fisico local. Ela nao consulta nem
 publica estoque na Nuvemshop, nao cria outbox ou Edge Function e nao interfere
 em preco, catalogo, OAuth, LGPD, vinculos ou nos campos de ultima baixa.
 
-- O CSV consolidado diario continua sendo a unica baixa oficial do estoque
+- O relatorio consolidado diario, recebido como CSV ou como `.xls` original
+  Produtos Vendidos do Futura, continua sendo a unica baixa oficial do estoque
   local. Ele nao deve ser reaplicado para representar uma venda remota ja
   observada.
 - Vendas ocorridas nas lojas Nuvemshop `3514029` e `6696910` reduzem somente o
@@ -139,7 +140,15 @@ A migration 36 desta etapa implementa apenas a fundacao segura do fechamento.
 A aplicacao oficial deixa de confiar no hash, no produto resolvido ou no resumo
 do navegador: a Edge Function autenticada `fechamento-csv-produtos` recebe o
 arquivo bruto, valida o administrador, normaliza e interpreta todas as linhas,
-calcula o SHA-256 e chama a RPC transacional com `service_role`. A RPC revalida
+calcula o SHA-256 e chama a RPC transacional com `service_role`. O fechamento
+aceita o CSV consolidado e, como alternativa, o relatorio original Excel legado
+`.xls` do Futura. O XLS deve conter somente a planilha `Report`, identificar o
+relatorio "Produtos Vendidos", abranger um unico dia e possuir cabecalhos
+inequivocos de referencia, descricao, codigo de barras e quantidade. Cabecalhos
+repetidos e a mudanca de posicao da quantidade entre paginas sao resolvidos pelo
+nome das colunas. Custo, markup, preco, venda, lucro e demais colunas nao entram
+no payload. A mesma implementacao local do parser e executada na previa e na
+Function; apenas o reprocessamento server-side autoriza a RPC. A RPC revalida
 o UUID administrativo e deriva o e-mail de auditoria do banco. Apenas
 `service_role` pode executar essa RPC; a RPC inferior de baixa tambem deixa de
 aceitar chamadas diretas.

@@ -49,10 +49,10 @@ Esta pasta documenta a configuracao de seguranca usada no Supabase de producao.
 - Vendedor pode ler produtos, mas nao atualiza `produtos` diretamente.
 - Baixas de venda de maquinas passam pela funcao `public.registrar_baixa_venda`.
 - Baixa manual de produtos passa pela funcao `public.registrar_baixa_produto_manual`, com senha validada no Supabase.
-- O navegador aplica o fechamento CSV exclusivamente pela Edge Function `fechamento-csv-produtos`; somente `service_role` executa `public.registrar_fechamento_csv_produtos`, e a funcao inferior `registrar_baixa_csv_produtos` nao aceita chamadas diretas.
+- O navegador aplica o fechamento oficial, a partir de CSV ou do relatorio legado `.xls` Produtos Vendidos do Futura, exclusivamente pela Edge Function `fechamento-csv-produtos`; a Function reprocessa o arquivo bruto com o mesmo parser usado apenas para a previa local. O XLS exige uma unica planilha `Report`, periodo de um dia, data igual a competencia escolhida e cabecalhos inequivocos por nome. Somente `service_role` executa `public.registrar_fechamento_csv_produtos`, e a funcao inferior `registrar_baixa_csv_produtos` nao aceita chamadas diretas.
 - Cada baixa por CSV gera um lote de conferencia em `public.baixas_csv_lotes` e itens em `public.baixas_csv_itens`.
-- O mesmo arquivo CSV nao pode ser aplicado novamente, mesmo que a data de movimento seja alterada.
-- Cada competencia aceita somente um CSV oficial **v2**. Lotes legados **v1** permanecem preservados, mesmo quando repetem competencia; repetir exatamente o mesmo hash e payload v2 e idempotente, e outro arquivo para a competencia v2 e tratado como corretivo e bloqueado para revisao manual.
+- O mesmo arquivo oficial, CSV ou XLS, nao pode ser aplicado novamente, mesmo que a data de movimento seja alterada.
+- Cada competencia aceita somente um fechamento oficial **v2**. Lotes legados **v1** permanecem preservados, mesmo quando repetem competencia; repetir exatamente o mesmo hash e payload v2 e idempotente, e outro arquivo para a competencia v2 e tratado como corretivo e bloqueado para revisao manual.
 - Historico de movimentacao fica centralizado no Supabase.
 
 ## Arquivos
