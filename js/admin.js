@@ -538,8 +538,10 @@ let csvPreviewApplied = false;
 let csvPreviewFileName = null;
 let csvPreviewHash = null;
 let csvPreviewRawBase64 = null;
+let csvPreviewReportDate = null;
 let csvDuplicateLot = null;
 let csvDuplicateCheckPending = false;
+let futuraVendasCorePromise = null;
 let csvLots = [];
 let csvLotsPage = 1;
 const csvLotsPageSize = 5;
@@ -4426,6 +4428,43 @@ function setDefaultCsvMovementDate() {
   if (!input.value) input.value = localDateValue();
 }
 
+function csvFileFormat(fileName) {
+  const normalized = String(fileName || '').trim().toLowerCase();
+  if (normalized.endsWith('.csv')) return 'csv';
+  if (normalized.endsWith('.xls')) return 'xls';
+  return null;
+}
+
+const CSV_IMPORT_PROTOCOL_MESSAGE = 'Para importar CSV ou XLS, abra o Admin por um servidor HTTP local (por exemplo, http://localhost:8000/admin.html). A abertura direta por file:// foi bloqueada por seguranca.';
+
+function isCsvImportProtocolSupported(locationLike = window.location) {
+  return locationLike?.protocol === 'http:' || locationLike?.protocol === 'https:';
+}
+
+function enforceCsvImportProtocol() {
+  if (isCsvImportProtocolSupported()) return true;
+
+  const input = document.getElementById('csv-baixa-input');
+  const summaryEl = document.getElementById('csv-preview-summary');
+  const wrapEl = document.getElementById('csv-preview-table-wrap');
+  const applyBtn = document.getElementById('csv-apply-btn');
+  if (input) {
+    input.value = '';
+    input.disabled = true;
+  }
+  if (summaryEl) summaryEl.textContent = CSV_IMPORT_PROTOCOL_MESSAGE;
+  if (wrapEl) wrapEl.style.display = 'none';
+  if (applyBtn) applyBtn.disabled = true;
+  return false;
+}
+
+function loadFuturaVendasCore() {
+  if (!futuraVendasCorePromise) {
+    futuraVendasCorePromise = import('../supabase/functions/_shared/futura-vendas-core.mjs?v=20260901-futura-xls-1');
+  }
+  return futuraVendasCorePromise;
+}
+
 function movementDateFromFileName(fileName) {
   const match = String(fileName || '').match(/(?:^|\D)(\d{1,2})[-_.](\d{1,2})(?:[-_.](\d{2,4}))?(?:\D|$)/);
   if (!match) return null;
@@ -4589,6 +4628,8 @@ function updateCsvApplyState() {
   const insufficient = csvPreviewRows.filter(row => row.product && row.afterQty < 0).length;
   const blocked = csvPreviewRows.some(row => row.blocking);
   const movementDate = document.getElementById('csv-movement-date')?.value || '';
+  const reportDateMismatch = Boolean(csvPreviewReportDate && movementDate !== csvPreviewReportDate);
+  const protocolSupported = isCsvImportProtocolSupported();
 
   if (csvPreviewApplied) {
     btn.disabled = true;
@@ -4599,16 +4640,22 @@ function updateCsvApplyState() {
   }
 
   btn.textContent = applicable.length ? `Aplicar baixa (${applicable.length})` : 'Aplicar baixa';
-  btn.disabled = !applicable.length || invalid > 0 || insufficient > 0 || blocked || !movementDate || !csvPreviewHash || !csvPreviewRawBase64 || csvDuplicateCheckPending || !!csvDuplicateLot;
+  btn.disabled = !protocolSupported || !applicable.length || invalid > 0 || insufficient > 0 || blocked || !movementDate || reportDateMismatch || !csvPreviewHash || !csvPreviewRawBase64 || csvDuplicateCheckPending || !!csvDuplicateLot;
 
-  if (!movementDate) {
+  if (!protocolSupported) {
+    msg.classList.add('err');
+    msg.textContent = CSV_IMPORT_PROTOCOL_MESSAGE;
+  } else if (!movementDate) {
     msg.classList.add('err');
     msg.textContent = 'Informe a data do movimento.';
+  } else if (reportDateMismatch) {
+    msg.classList.add('err');
+    msg.textContent = 'A data escolhida deve coincidir com o unico dia informado no relatorio Futura.';
   } else if (csvDuplicateCheckPending) {
-    msg.textContent = 'Verificando se este arquivo CSV ja foi aplicado...';
+    msg.textContent = 'Verificando se este arquivo ja foi aplicado...';
   } else if (csvDuplicateLot) {
     msg.classList.add('err');
-    msg.textContent = 'Este arquivo CSV ja foi aplicado anteriormente. Selecione outro arquivo.';
+    msg.textContent = 'Este arquivo ja foi aplicado anteriormente. Selecione outro arquivo.';
   } else if (!csvPreviewRows.length) {
     msg.textContent = '';
   } else if (blocked) {
@@ -4700,6 +4747,7 @@ function clearCsvPreview() {
   csvPreviewFileName = null;
   csvPreviewHash = null;
   csvPreviewRawBase64 = null;
+  csvPreviewReportDate = null;
   csvDuplicateLot = null;
   csvDuplicateCheckPending = false;
   const input = document.getElementById('csv-baixa-input');
@@ -4707,16 +4755,24 @@ function clearCsvPreview() {
   const wrapEl = document.getElementById('csv-preview-table-wrap');
   const tbody = document.getElementById('csv-preview-tbody');
   if (input) input.value = '';
-  if (summaryEl) summaryEl.textContent = 'Nenhum arquivo selecionado.';
+  if (summaryEl) summaryEl.textContent = isCsvImportProtocolSupported()
+    ? 'Nenhum arquivo selecionado.'
+    : CSV_IMPORT_PROTOCOL_MESSAGE;
   if (wrapEl) wrapEl.style.display = 'none';
   if (tbody) tbody.innerHTML = '';
   renderCsvDuplicateWarning();
+  enforceCsvImportProtocol();
   updateCsvApplyState();
 }
 
 async function handleCsvPreview(event) {
   const file = event.target.files?.[0];
   if (!file) return;
+  if (!enforceCsvImportProtocol()) {
+    clearCsvPreview();
+    return;
+  }
+  const fileFormat = csvFileFormat(file.name);
 
   const summaryEl = document.getElementById('csv-preview-summary');
   const wrapEl = document.getElementById('csv-preview-table-wrap');
@@ -4728,10 +4784,11 @@ async function handleCsvPreview(event) {
   csvPreviewFileName = file.name;
   csvPreviewHash = null;
   csvPreviewRawBase64 = null;
+  csvPreviewReportDate = null;
   csvDuplicateLot = null;
   csvDuplicateCheckPending = false;
   renderCsvDuplicateWarning();
-  const detectedMovementDate = movementDateFromFileName(file.name);
+  const detectedMovementDate = fileFormat === 'csv' ? movementDateFromFileName(file.name) : null;
   const movementInput = document.getElementById('csv-movement-date');
   if (detectedMovementDate && movementInput) movementInput.value = detectedMovementDate;
   updateCsvApplyState();
@@ -4739,36 +4796,63 @@ async function handleCsvPreview(event) {
   wrapEl.style.display = 'none';
   tbody.innerHTML = '';
 
+  if (!fileFormat) {
+    summaryEl.textContent = 'Selecione um arquivo .csv ou o relatorio legado .xls do Futura.';
+    updateCsvApplyState();
+    return;
+  }
+
   if (file.size < 1 || file.size > 1024 * 1024) {
-    summaryEl.textContent = 'O arquivo CSV deve ter entre 1 byte e 1 MB.';
+    summaryEl.textContent = 'O arquivo deve ter entre 1 byte e 1 MB.';
     updateCsvApplyState();
     return;
   }
 
   let fileBytes;
-  let text;
   try {
     fileBytes = new Uint8Array(await file.arrayBuffer());
     csvPreviewRawBase64 = CsvReconciliationCore.bytesToBase64(fileBytes);
-    text = new TextDecoder('utf-8', { fatal: true }).decode(fileBytes);
-    csvPreviewHash = await hashCsvContent(text);
   } catch (error) {
     csvPreviewRawBase64 = null;
-    summaryEl.textContent = 'O arquivo CSV deve usar codificacao UTF-8 valida.';
+    summaryEl.textContent = 'Nao foi possivel ler o arquivo selecionado.';
     updateCsvApplyState();
     return;
   }
-  let rows;
+
   try {
-    rows = parseCsvText(text);
-    csvPreviewSourceItems = csvRowsToItems(rows);
+    if (fileFormat === 'xls') {
+      const futuraCore = await loadFuturaVendasCore();
+      const report = futuraCore.parseFuturaVendasXls(fileBytes);
+      csvPreviewReportDate = report.competencia;
+      const selectedDate = document.getElementById('csv-movement-date')?.value || '';
+      if (!selectedDate || selectedDate !== report.competencia) {
+        throw new Error('A data escolhida deve coincidir com o unico dia informado no relatorio Futura.');
+      }
+      csvPreviewHash = await futuraCore.sha256Bytes(fileBytes);
+      csvPreviewSourceItems = report.lines.map(line => ({
+        ref: line.referencia || '',
+        descricao: line.descricao || '',
+        barcode: line.codigo_barras || '',
+        quantidade: futuraCore.quantityFromOfficialText(line.quantidade_original),
+        rawQty: line.quantidade_original
+      }));
+    } else {
+      let text;
+      try {
+        text = new TextDecoder('utf-8', { fatal: true }).decode(fileBytes);
+      } catch {
+        throw new Error('O arquivo CSV deve usar codificacao UTF-8 valida.');
+      }
+      csvPreviewHash = await hashCsvContent(text);
+      csvPreviewSourceItems = csvRowsToItems(parseCsvText(text));
+    }
     if (!csvPreviewSourceItems.length) throw new Error('Nenhuma linha de produto foi encontrada.');
   } catch (error) {
     csvPreviewRows = [];
     csvPreviewSourceItems = [];
     csvPreviewHash = null;
     csvPreviewRawBase64 = null;
-    summaryEl.textContent = `Nao foi possivel interpretar o CSV: ${error?.message || 'formato invalido.'}`;
+    summaryEl.textContent = `Nao foi possivel interpretar o arquivo: ${error?.message || 'formato invalido.'}`;
     updateCsvApplyState();
     return;
   }
@@ -4826,11 +4910,11 @@ async function handleCsvPreview(event) {
     ${notFound} nao encontrado${notFound === 1 ? '' : 's'} -
     ${blockedRows} codigo${blockedRows === 1 ? '' : 's'} bloqueado${blockedRows === 1 ? '' : 's'} -
     ${insufficient} com estoque insuficiente -
-    total CSV: ${totalQtyCsv}
+    total do arquivo: ${totalQtyCsv}
   `;
 
   if (!previewRows.length) {
-    tbody.innerHTML = '<tr><td colspan="8" class="empty-state">Nenhuma linha valida encontrada no CSV.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" class="empty-state">Nenhuma linha valida encontrada no arquivo.</td></tr>';
   } else {
     tbody.innerHTML = previewRows.map(row => {
       const foundLabel = row.product
@@ -4860,6 +4944,10 @@ async function handleCsvPreview(event) {
 }
 
 async function confirmCsvBaixa() {
+  if (!enforceCsvImportProtocol()) {
+    updateCsvApplyState();
+    return;
+  }
   const btn = document.getElementById('csv-apply-btn');
   const msg = document.getElementById('csv-apply-message');
   const applicable = csvApplicableRows();
@@ -4867,8 +4955,9 @@ async function confirmCsvBaixa() {
   const insufficient = csvPreviewRows.filter(row => row.product && row.afterQty < 0).length;
   const blocked = csvPreviewRows.some(row => row.blocking);
   const movementDate = document.getElementById('csv-movement-date')?.value || '';
+  const reportDateMismatch = Boolean(csvPreviewReportDate && movementDate !== csvPreviewReportDate);
 
-  if (!applicable.length || invalid > 0 || insufficient > 0 || blocked || csvPreviewApplied || !movementDate || !csvPreviewHash || !csvPreviewRawBase64 || csvDuplicateCheckPending || csvDuplicateLot) {
+  if (!applicable.length || invalid > 0 || insufficient > 0 || blocked || csvPreviewApplied || !movementDate || reportDateMismatch || !csvPreviewHash || !csvPreviewRawBase64 || csvDuplicateCheckPending || csvDuplicateLot) {
     updateCsvApplyState();
     return;
   }
@@ -5636,8 +5725,15 @@ function initCsvImportHistory() {
   refreshBtn.addEventListener('click', loadCsvImportHistory);
 }
 
+function initCsvImportProtocolGuard() {
+  enforceCsvImportProtocol();
+  updateCsvApplyState();
+}
+
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', initCsvImportHistory);
+  document.addEventListener('DOMContentLoaded', initCsvImportProtocolGuard);
 } else {
   initCsvImportHistory();
+  initCsvImportProtocolGuard();
 }

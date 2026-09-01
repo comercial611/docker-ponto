@@ -441,9 +441,15 @@ inferior deixa de aceitar chamadas diretas.
 
 A previa do Admin continua local e exclusivamente diagnostica. A aplicacao
 oficial segue para `fechamento-csv-produtos` como arquivo bruto, nome e
-competencia. A Function exige JWT e administrador, valida UTF-8, tamanho,
+competencia. A Function exige JWT e administrador e reprocessa integralmente o
+CSV UTF-8 ou o relatorio original `.xls` Produtos Vendidos do Futura. O parser
+XLS e compartilhado com a previa, usa SheetJS 0.20.3 vendorizado localmente,
+exige uma unica planilha `Report`, periodo de um dia coincidente com a
+competencia e cabecalhos inequivocos localizados por nome em cada pagina. Apenas
+referencia, descricao, codigo de barras e quantidade formam as linhas canonicas;
+campos financeiros e demais colunas sao ignorados. A Function valida tamanho,
 estrutura e todas as linhas, rejeita ambiguidade entre produto e maquina e
-calcula o SHA-256 do conteudo normalizado. Ela chama, com `service_role`, a RPC
+calcula o SHA-256 no servidor. Ela chama, com `service_role`, a RPC
 transacional e envia somente o UUID autenticado como operador. A RPC revalida
 esse UUID em `auth.users` e `public.perfis`, deriva o e-mail do banco e nao pode
 ser executada por `anon` ou `authenticated`. Produto resolvido, resumo e hash do
@@ -452,7 +458,8 @@ de indicar sucesso ou limpar o estado da tela.
 
 As tabelas de cobertura e eventos sao imutaveis e legiveis apenas por admin;
 nenhum papel do navegador pode inserir cobertura e nenhuma RPC de zeragem foi
-criada. O CSV diario deve ser unico, completo e oficial para as vendas da
+criada. O relatorio diario, em CSV ou `.xls` original do Futura, deve ser unico,
+completo e oficial para as vendas da
 competencia. Se um produto
 acabar durante o dia por venda remota, a futura zeragem auditada podera levar
 o saldo local a zero e publicar alvo externo zero, somente apos confirmacao

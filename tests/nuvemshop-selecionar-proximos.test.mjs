@@ -125,7 +125,7 @@ test('controle desabilita durante operações, no máximo e sem elegíveis adici
 
 test('ação de seleção apenas altera caixas locais, sem verificação ou escrita', () => {
   const match = adminSource.match(
-    /function selectNextNuvemshopBatchItems\(\) \{([\s\S]*?)\n\}\n\nfunction renderNuvemshopPilotApplication/
+    /function selectNextNuvemshopBatchItems\(\) \{([\s\S]*?)\r?\n\}\r?\n\r?\nfunction renderNuvemshopPilotApplication/
   );
   assert.ok(match, 'ação Selecionar próximos 15 deve existir');
   assert.doesNotMatch(
@@ -140,7 +140,7 @@ test('interface expõe botão, contador acessível e cache atualizado', () => {
   assert.match(adminHtml, /id="nuvemshop-batch-selection-count"[^>]*role="status"[^>]*aria-live="polite"/);
   assert.match(adminSource, /selecionados de \$\{NUVEMSHOP_BATCH_MAX_ITEMS\} · \$\{summary\.eligibleRemaining\} elegíveis restantes/);
   assert.match(adminHtml, /css\/admin\.css\?v=20260831-selecionar-15-1/);
-  assert.match(adminHtml, /js\/admin\.js\?v=20260831-selecionar-15-1/);
+  assert.match(adminHtml, /js\/admin\.js\?v=20260901-futura-xls-2/);
 });
 
 test('limites mínimo 2 e máximo 15 permanecem no frontend, Function e migration', () => {

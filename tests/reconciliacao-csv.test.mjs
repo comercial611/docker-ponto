@@ -177,7 +177,8 @@ test('prévia local trata erro de parser e bloqueia candidatos ambíguos', () =>
     { product: { id: 3, ativo: true }, matchBy: 'Referencia' }
   ], []).status, 'ambiguous');
 
-  assert.match(adminSource, /try\s*\{\s*rows = parseCsvText\(text\);[\s\S]*Nao foi possivel interpretar o CSV/);
+  assert.match(adminSource, /new TextDecoder\('utf-8', \{ fatal: true \}\)\.decode\(fileBytes\);[\s\S]*csvRowsToItems\(parseCsvText\(text\)\)/);
+  assert.match(adminSource, /Nao foi possivel interpretar o arquivo/);
   assert.match(adminSource, /blockingReason:\s*resolution\.status === 'ambiguous'/);
   assert.match(adminSource, /const blocked = csvPreviewRows\.some\(row => row\.blocking\)/);
   assert.match(adminSource, /btn\.disabled = [^;]*blocked/);
