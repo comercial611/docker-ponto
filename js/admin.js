@@ -529,6 +529,7 @@ const NuvemshopBatchSelectionCore = (() => {
 // END NUVEMSHOP_BATCH_SELECTION_CORE
 
 let products = [];
+let productEditContext = null;
 let vendedores = [];
 let deleteTargetId = null;
 let deleteVendedorId = null;
@@ -1907,6 +1908,10 @@ function updateStats() {
 }
 
 function toggleVoltagem(e) {
+  if (productEditContext && e.target.checked !== productEditContext.temVoltagem) {
+    e.target.checked = productEditContext.temVoltagem;
+    alert('O tipo de estoque não pode ser convertido na edição do cadastro.');
+  }
   const checked = e.target.checked;
   document.getElementById('codes-simple-wrap').classList.toggle('visible', !checked);
   document.getElementById('codes-voltage-wrap').classList.toggle('visible', checked);
@@ -1915,6 +1920,15 @@ function toggleVoltagem(e) {
   document.getElementById('p-futura-voltage-target').hidden = !checked;
   document.querySelectorAll('input[name="p-futura-voltage"]').forEach(input => { input.checked = false; });
   setFuturaFeedback('');
+}
+
+function setProductStockFormMode(editing) {
+  document.getElementById('p-tem-voltagem').disabled = editing;
+  ['p-qty', 'p-qty-110', 'p-qty-220'].forEach(id => {
+    document.getElementById(id).readOnly = editing;
+    document.getElementById(`${id}-label`).textContent = editing ? 'Saldo carregado (consulta)' : 'Qtd. inicial';
+  });
+  document.getElementById('p-stock-edit-note').hidden = !editing;
 }
 
 function inputText(id) {
@@ -2203,9 +2217,24 @@ function initProductTagsInput() {
 }
 
 async function saveProduct() {
+  const editId = document.getElementById('p-edit-id').value;
+  const editing = productEditContext !== null;
+  const selectedVoltage = document.getElementById('p-tem-voltagem').checked;
+  if (editing || editId) {
+    const currentProduct = products.find(p => String(p.id) === productEditContext?.id);
+    if (!editing || editId !== productEditContext.id || !currentProduct) {
+      alert('Cadastro de edição inválido. Reabra o produto antes de salvar.');
+      return;
+    }
+    if (selectedVoltage !== productEditContext.temVoltagem
+        || !!currentProduct.tem_voltagem !== productEditContext.temVoltagem) {
+      alert('O tipo de estoque não pode ser convertido na edição do cadastro. Reabra o produto.');
+      return;
+    }
+  }
   const nome = document.getElementById('p-nome').value.trim();
   if (!nome) { alert('Nome do produto é obrigatório.'); return; }
-  const temVoltagem = document.getElementById('p-tem-voltagem').checked;
+  const temVoltagem = editing ? productEditContext.temVoltagem : selectedVoltage;
   const fornecedorStatus = document.getElementById('p-fornecedor-status').value;
   const fornecedorObservacao = document.getElementById('p-fornecedor-obs').value.trim();
   if (!isValidSupplierStatus(fornecedorStatus)) {
@@ -2235,10 +2264,9 @@ async function saveProduct() {
     barras220: inputText('p-cod-barras-220')
   };
 
-  const body = {
+  const cadastro = {
     nome,
     categoria: document.getElementById('p-categoria').value || 'maquina',
-    tem_voltagem: temVoltagem,
     observacoes: document.getElementById('p-obs').value.trim() || null,
     tags: productTags.slice(),
     fornecedor_status: fornecedorStatus,
@@ -2247,45 +2275,52 @@ async function saveProduct() {
   };
 
   if (temVoltagem) {
-    body.codigo_fabricante_110v = voltageCodes.fabricante110 || null;
-    body.codigo_fabricante_220v = voltageCodes.fabricante220 || null;
-    body.codigo_interno_110v = voltageCodes.interno110 || null;
-    body.codigo_interno_220v = voltageCodes.interno220 || null;
-    body.codigo_referencia_110v = voltageCodes.referencia110 || null;
-    body.codigo_referencia_220v = voltageCodes.referencia220 || null;
-    body.codigo_barras_110v = voltageCodes.barras110 || null;
-    body.codigo_barras_220v = voltageCodes.barras220 || null;
-    body.codigo_fabricante = formatVoltageCodes(voltageCodes.fabricante110, voltageCodes.fabricante220);
-    body.codigo_interno = formatVoltageCodes(voltageCodes.interno110, voltageCodes.interno220) || legacyCodes.interno || null;
-    body.codigo_referencia = formatVoltageCodes(voltageCodes.referencia110, voltageCodes.referencia220) || legacyCodes.referencia || null;
-    body.sku = formatVoltageCodes(voltageCodes.barras110, voltageCodes.barras220) || legacyCodes.barras || null;
-    body.quantidade_110v = parseInt(document.getElementById('p-qty-110').value) || 0;
-    body.quantidade_220v = parseInt(document.getElementById('p-qty-220').value) || 0;
-    body.quantidade = 0;
-    body.minimo = parseInt(document.getElementById('p-min-volt').value) || 0;
+    cadastro.codigo_fabricante_110v = voltageCodes.fabricante110 || null;
+    cadastro.codigo_fabricante_220v = voltageCodes.fabricante220 || null;
+    cadastro.codigo_interno_110v = voltageCodes.interno110 || null;
+    cadastro.codigo_interno_220v = voltageCodes.interno220 || null;
+    cadastro.codigo_referencia_110v = voltageCodes.referencia110 || null;
+    cadastro.codigo_referencia_220v = voltageCodes.referencia220 || null;
+    cadastro.codigo_barras_110v = voltageCodes.barras110 || null;
+    cadastro.codigo_barras_220v = voltageCodes.barras220 || null;
+    cadastro.codigo_fabricante = formatVoltageCodes(voltageCodes.fabricante110, voltageCodes.fabricante220);
+    cadastro.codigo_interno = formatVoltageCodes(voltageCodes.interno110, voltageCodes.interno220) || legacyCodes.interno || null;
+    cadastro.codigo_referencia = formatVoltageCodes(voltageCodes.referencia110, voltageCodes.referencia220) || legacyCodes.referencia || null;
+    cadastro.sku = formatVoltageCodes(voltageCodes.barras110, voltageCodes.barras220) || legacyCodes.barras || null;
+    cadastro.minimo = parseInt(document.getElementById('p-min-volt').value) || 0;
   } else {
-    body.codigo_fabricante = legacyCodes.fabricante || null;
-    body.codigo_interno = legacyCodes.interno || null;
-    body.codigo_referencia = legacyCodes.referencia || null;
-    body.sku = legacyCodes.barras || null;
-    body.codigo_fabricante_110v = null;
-    body.codigo_fabricante_220v = null;
-    body.codigo_interno_110v = null;
-    body.codigo_interno_220v = null;
-    body.codigo_referencia_110v = null;
-    body.codigo_referencia_220v = null;
-    body.codigo_barras_110v = null;
-    body.codigo_barras_220v = null;
-    body.quantidade = parseInt(document.getElementById('p-qty').value) || 0;
-    body.minimo = parseInt(document.getElementById('p-min').value) || 0;
-    body.quantidade_110v = 0;
-    body.quantidade_220v = 0;
+    cadastro.codigo_fabricante = legacyCodes.fabricante || null;
+    cadastro.codigo_interno = legacyCodes.interno || null;
+    cadastro.codigo_referencia = legacyCodes.referencia || null;
+    cadastro.sku = legacyCodes.barras || null;
+    cadastro.codigo_fabricante_110v = null;
+    cadastro.codigo_fabricante_220v = null;
+    cadastro.codigo_interno_110v = null;
+    cadastro.codigo_interno_220v = null;
+    cadastro.codigo_referencia_110v = null;
+    cadastro.codigo_referencia_220v = null;
+    cadastro.codigo_barras_110v = null;
+    cadastro.codigo_barras_220v = null;
+    cadastro.minimo = parseInt(document.getElementById('p-min').value) || 0;
   }
 
-  const editId = document.getElementById('p-edit-id').value;
-  const { error } = editId
-    ? await sb.from('produtos').update(body).eq('id', editId)
-    : await sb.from('produtos').insert(body);
+  let result;
+  if (editing) {
+    // Cadastro existente nunca envia saldos nem altera o modo de estoque.
+    const editPayload = { ...cadastro };
+    result = await sb.from('produtos').update(editPayload).eq('id', productEditContext.id);
+  } else {
+    // Somente a criação usa os campos de saldo inicial do formulário.
+    const initialStock = temVoltagem
+      ? { quantidade: 0,
+          quantidade_110v: parseInt(document.getElementById('p-qty-110').value) || 0,
+          quantidade_220v: parseInt(document.getElementById('p-qty-220').value) || 0 }
+      : { quantidade: parseInt(document.getElementById('p-qty').value) || 0,
+          quantidade_110v: 0, quantidade_220v: 0 };
+    const createPayload = { ...cadastro, tem_voltagem: temVoltagem, ...initialStock };
+    result = await sb.from('produtos').insert(createPayload);
+  }
+  const { error } = result;
   if (error) {
     console.error('Falha ao salvar produto', error);
     alert(`Não foi possível salvar o produto: ${error.message}`);
@@ -2299,6 +2334,8 @@ async function saveProduct() {
 function editProduct(id) {
   const p = products.find(x => x.id === id);
   if (!p) return;
+  productEditContext = Object.freeze({ id: String(p.id), temVoltagem: !!p.tem_voltagem });
+  setProductStockFormMode(true);
   resetFuturaImportHelper();
   document.getElementById('p-nome').value = p.nome;
   document.getElementById('p-categoria').value = p.categoria || 'maquina';
@@ -2343,6 +2380,8 @@ function editProduct(id) {
 
 function cancelEdit() { clearForm(); }
 function clearForm() {
+  productEditContext = null;
+  setProductStockFormMode(false);
   ['p-nome','p-cod-fab','p-cod-interno','p-cod-ref','p-cod-barras',
     'p-cod-fab-110','p-cod-fab-220','p-cod-interno-110','p-cod-interno-220',
     'p-cod-ref-110','p-cod-ref-220','p-cod-barras-110','p-cod-barras-220',

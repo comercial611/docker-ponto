@@ -85,6 +85,20 @@ O Dashboard administrativo apenas prioriza pendencias e sugere reposicao ate o
 minimo cadastrado; ele nao altera estoque. A baixa oficial continua sendo feita
 somente pelo CSV final consolidado.
 
+## Edicao cadastral sem movimentar saldo
+
+Nesta versao do Admin, salvar um produto existente envia somente os dados
+cadastrais: as tres quantidades e o tipo de estoque nao integram o UPDATE.
+Os saldos exibidos na edicao sao valores carregados ao abrir o cadastro, apenas
+para consulta; movimentacoes posteriores podem tornar essa exibicao desatualizada.
+Entradas, contagens e baixas continuam nos respectivos fluxos. A conversao entre
+produto simples e produto com voltagem fica bloqueada na edicao.
+
+Na criacao, a escolha do tipo e os saldos iniciais simples ou 110V/220V continuam
+disponiveis. Esta correcao e do frontend, sem migration ou alteracao de permissoes:
+abas antigas precisam ser recarregadas apos a publicacao. Nao substitui uma
+futura protecao de escrita de saldo no banco e nao implica rollout em producao.
+
 ## Estoque intradiario — etapa 1: entrada local auditada
 
 A primeira etapa esta implementada na aba Produtos. Administradores podem usar

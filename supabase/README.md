@@ -2,6 +2,20 @@
 
 Esta pasta documenta a configuracao de seguranca usada no Supabase de producao.
 
+## Limite da protecao cadastral no Admin
+
+O `saveProduct()` desta versao separa INSERT de UPDATE. O UPDATE cadastral omite
+`quantidade`, `quantidade_110v`, `quantidade_220v` e `tem_voltagem`, preservando o
+saldo armazenado mesmo quando o formulario ficou antigo. O INSERT mantem a regra
+de saldo inicial. Na edicao, saldos sao consulta do momento de abertura e o tipo
+nao pode ser convertido; entrada, contagem e baixa permanecem separadas.
+
+Nenhuma migration, grant, trigger ou RPC foi alterado por essa correcao. Ela nao
+revoga a permissao existente de escrita no banco, nao protege clientes antigos
+nem chamadas diretas e nao constitui confirmacao do estado efetivo de producao.
+Depois de publicar o frontend, recarregar abas antigas e necessario. Uma protecao
+adicional no banco exige etapa propria que preserve criacao e RPCs de movimentacao.
+
 ## Ordem sugerida
 
 1. `01-perfis.sql`
