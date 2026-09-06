@@ -130,6 +130,25 @@ uma variante externa 110V nao e confundida com a variante 220V.
 `public.historico` centraliza as movimentacoes relevantes. A tela pode mostrar
 subconjuntos diferentes, mas o registro principal permanece no banco.
 
+### Edicao cadastral e saldos carregados
+
+No Admin desta versao, `saveProduct()` monta payloads distintos. Criacao conserva
+o tipo e os saldos iniciais; edicao omite integralmente as tres quantidades e
+`tem_voltagem`. Assim, salvar nome, observacao ou codigos nao reenvia o saldo de
+um formulario antigo sobre uma entrada ou baixa concorrente.
+
+`editProduct()` fixa o ID e o tipo no contexto de edicao. O checkbox de voltagem
+fica bloqueado e o handler rejeita conversao manipulada ou tipo divergente na
+lista atualizada. Os campos de saldo sao somente leitura, identificados como
+valores carregados ao abrir; nao sao usados para validar ou montar o UPDATE.
+Cancelar ou concluir restaura os controles de criacao. Os fluxos de entrada,
+contagem e baixa nao mudam.
+
+Este limite e de interface, nao de autorizacao PostgreSQL. Nao houve alteracao de
+migration, RPC ou grant, nem verificacao de producao. Abas com JavaScript antigo
+permanecem vulneraveis ate recarregar apos publicacao; protecao no banco contra
+outros clientes e uma etapa futura, dependente da revisao das permissoes atuais.
+
 ## 5. Fluxos de estoque
 
 ### Contagem pelo funcionario

@@ -204,14 +204,16 @@
       <div class="form-section-label">Estoque</div>
 
       <div class="checkbox-row" onclick="document.getElementById('p-tem-voltagem').click()">
-        <input type="checkbox" id="p-tem-voltagem" onclick="toggleVoltagem(event)">
+        <input type="checkbox" id="p-tem-voltagem" onclick="event.stopPropagation(); toggleVoltagem(event)" aria-describedby="p-stock-edit-note">
         <label for="p-tem-voltagem" onclick="event.stopPropagation()">Este produto tem voltagem (110V / 220V)</label>
       </div>
+
+      <p class="futura-import-copy" id="p-stock-edit-note" hidden>Os saldos abaixo são os valores carregados ao abrir o cadastro, somente para consulta. Movimentações são realizadas pelos fluxos de entrada, contagem e baixa. O tipo de estoque não pode ser convertido nesta edição.</p>
 
       <div class="qty-block">
         <div id="qty-simple-wrap" class="visible">
           <div class="qty-simple-row">
-            <div class="form-field"><label>Qtd. inicial</label><input type="number" id="p-qty" placeholder="0" min="0"></div>
+            <div class="form-field"><label for="p-qty" id="p-qty-label">Qtd. inicial</label><input type="number" id="p-qty" placeholder="0" min="0" aria-describedby="p-stock-edit-note"></div>
             <div class="form-field"><label>Qtd. mínima (alerta)</label><input type="number" id="p-min" placeholder="5" min="0"></div>
           </div>
         </div>
@@ -220,11 +222,11 @@
           <div class="volt-input-row">
             <div class="volt-col">
               <div class="volt-col-header"><span class="volt-badge-110">110V</span></div>
-              <div class="form-field"><label>Quantidade</label><input type="number" id="p-qty-110" placeholder="0" min="0"></div>
+              <div class="form-field"><label for="p-qty-110" id="p-qty-110-label">Qtd. inicial</label><input type="number" id="p-qty-110" placeholder="0" min="0" aria-describedby="p-stock-edit-note"></div>
             </div>
             <div class="volt-col">
               <div class="volt-col-header"><span class="volt-badge-220">220V</span></div>
-              <div class="form-field"><label>Quantidade</label><input type="number" id="p-qty-220" placeholder="0" min="0"></div>
+              <div class="form-field"><label for="p-qty-220" id="p-qty-220-label">Qtd. inicial</label><input type="number" id="p-qty-220" placeholder="0" min="0" aria-describedby="p-stock-edit-note"></div>
             </div>
             <div class="volt-col">
               <div class="volt-col-header" style="color:var(--muted);font-size:11px;font-weight:700;text-transform:uppercase">Alerta</div>
@@ -885,6 +887,6 @@
 <script src="js/produto-busca.js?v=20260725-tags-fornecedor-1"></script>
 <script src="js/admin-nuvemshop-auditoria.js?v=20260724-admin-auditoria-1"></script>
 <script src="js/admin-notificacoes.js?v=20260725-seguranca-notificacoes-1"></script>
-<script src="js/admin.js?v=20260831-selecionar-15-1"></script>
+<script src="js/admin.js?v=20260906-cadastro-sem-saldo-1"></script>
 </body>
 </html>
